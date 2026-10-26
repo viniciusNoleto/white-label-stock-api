@@ -1,0 +1,70 @@
+services:
+  nginx:
+    container_name: white-label-stock-api-nginx
+    build:
+      context: .docker/nginx
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    tty: true
+    ports:
+      - "${NGINX_PORT:-8005}:80"
+    environment:
+      TZ: "${APP_TIMEZONE:-UTC}"
+    volumes:
+      - .:/var/www/html
+      - ./.docker/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./.docker/nginx/conf.d/api.conf:/etc/nginx/conf.d/api.conf
+    networks:
+      - white-label-stock-api-network
+    depends_on:
+      - php-fpm
+
+  php-fpm:
+    container_name: white-label-stock-api-php
+    build:
+      context: .docker/php
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    tty: true
+    environment:
+      TZ: "${APP_TIMEZONE:-UTC}"
+      PHP_OPCACHE_VALIDATE_TIMESTAMPS: "${PHP_OPCACHE_VALIDATE_TIMESTAMPS:-1}"
+    volumes:
+      - .:/var/www/html
+      - ./.docker/php/php.ini:/usr/local/etc/php/php.ini
+    networks:
+      - white-label-stock-api-network
+    depends_on:
+      pgsql:
+        condition: service_healthy
+
+  pgsql:
+    container_name: white-label-stock-api-postgres
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      TZ: "${APP_TIMEZONE:-UTC}"
+    ports:
+      - "${FORWARD_DB_PORT:-5443}:5432"
+    volumes:
+      - white-label-stock-api-postgres-data:/var/lib/postgresql/data
+      - ./.docker/pgsql/init:/docker-entrypoint-initdb.d
+    networks:
+      - white-label-stock-api-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+networks:
+  white-label-stock-api-network:
+    name: white-label-stock-api-network
+    driver: bridge
+
+volumes:
+  white-label-stock-api-postgres-data:
+    name: white-label-stock-api-postgres-data

@@ -1,0 +1,77 @@
+<?php
+
+return [
+    'success' => 'Operación realizada con éxito.',
+    'unauthorized' => 'Debes iniciar sesión para continuar.',
+    'not_found' => 'Registro no encontrado.',
+    'server_error' => 'Error inesperado. Inténtalo de nuevo.',
+    'invalid_payload' => 'Datos inválidos.',
+
+    'auth' => [
+        'invalid_credentials' => 'Correo o contraseña inválidos.',
+        'logged_in' => 'Inicio de sesión exitoso.',
+        'logged_out' => 'Sesión cerrada.',
+    ],
+
+    'units' => [
+        'not_found' => 'Unidad no encontrada.',
+        'required_fields' => 'El nombre y la abreviatura son obligatorios.',
+        'in_use' => 'Esta unidad está en uso por artículos del inventario.',
+        'created' => 'Unidad creada con éxito.',
+        'updated' => 'Unidad actualizada con éxito.',
+        'deleted' => 'Unidad eliminada con éxito.',
+        'fetch_error' => 'Error al buscar unidades.',
+        'create_error' => 'Error al crear la unidad.',
+        'update_error' => 'Error al actualizar la unidad.',
+        'delete_error' => 'Error al eliminar la unidad.',
+    ],
+
+    'item_categories' => [
+        'not_found' => 'Categoría no encontrada.',
+        'required_fields' => 'El nombre y el color son obligatorios.',
+        'invalid_color' => 'Color inválido. Usa el formato #RRGGBB.',
+        'in_use' => 'Esta categoría está en uso por artículos del inventario.',
+        'created' => 'Categoría creada con éxito.',
+        'updated' => 'Categoría actualizada con éxito.',
+        'deleted' => 'Categoría eliminada con éxito.',
+        'fetch_error' => 'Error al buscar categorías.',
+        'create_error' => 'Error al crear la categoría.',
+        'update_error' => 'Error al actualizar la categoría.',
+        'delete_error' => 'Error al eliminar la categoría.',
+    ],
+
+    'storages' => [
+        'not_found' => 'Almacenamiento no encontrado.',
+        'name_required' => 'El nombre es obligatorio.',
+        'in_use' => 'Este almacenamiento está en uso por artículos del inventario.',
+        'created' => 'Almacenamiento creado con éxito.',
+        'updated' => 'Almacenamiento actualizado con éxito.',
+        'deleted' => 'Almacenamiento eliminado con éxito.',
+        'fetch_error' => 'Error al buscar almacenamientos.',
+        'create_error' => 'Error al crear el almacenamiento.',
+        'update_error' => 'Error al actualizar el almacenamiento.',
+        'delete_error' => 'Error al eliminar el almacenamiento.',
+    ],
+
+    'inventory_items' => [
+        'not_found' => 'Artículo no encontrado.',
+        'required_fields' => 'El nombre y la unidad son obligatorios.',
+        'name_required' => 'El nombre es obligatorio.',
+        'invalid_quantity' => 'Cantidad inválida.',
+        'invalid_components' => 'Cada componente necesita un artículo y una cantidad mayor que cero.',
+        'invalid_reference' => 'La unidad, el almacenamiento, la categoría o el componente informado no existe.',
+        'no_fields' => 'No se proporcionó ningún campo para actualizar.',
+        'build_quantity' => 'La cantidad debe ser mayor que cero.',
+        'no_components' => 'Este artículo no tiene componentes registrados.',
+        'insufficient_stock' => 'Existencias insuficientes de ":name". Necesario: :required, Disponible: :available.',
+        'created' => 'Artículo creado con éxito.',
+        'name_updated' => 'Nombre actualizado con éxito.',
+        'storage_updated' => 'Almacenamiento actualizado con éxito.',
+        'quantity_updated' => 'Cantidad actualizada con éxito.',
+        'built' => ':quantity unidad(es) construida(s) con éxito.',
+        'fetch_error' => 'Error al buscar artículos.',
+        'create_error' => 'Error al crear el artículo.',
+        'update_error' => 'Error al actualizar el artículo.',
+        'build_error' => 'Error al construir el artículo.',
+    ],
+];

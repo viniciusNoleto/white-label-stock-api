@@ -1,0 +1,77 @@
+<?php
+
+return [
+    'success' => 'Operation completed successfully.',
+    'unauthorized' => 'You need to sign in to continue.',
+    'not_found' => 'Record not found.',
+    'server_error' => 'Unexpected error. Please try again.',
+    'invalid_payload' => 'Invalid data.',
+
+    'auth' => [
+        'invalid_credentials' => 'Invalid email or password.',
+        'logged_in' => 'Signed in successfully.',
+        'logged_out' => 'Signed out.',
+    ],
+
+    'units' => [
+        'not_found' => 'Unit not found.',
+        'required_fields' => 'Name and abbreviation are required.',
+        'in_use' => 'This unit is in use by inventory items.',
+        'created' => 'Unit created successfully.',
+        'updated' => 'Unit updated successfully.',
+        'deleted' => 'Unit deleted successfully.',
+        'fetch_error' => 'Error fetching units.',
+        'create_error' => 'Error creating unit.',
+        'update_error' => 'Error updating unit.',
+        'delete_error' => 'Error deleting unit.',
+    ],
+
+    'item_categories' => [
+        'not_found' => 'Category not found.',
+        'required_fields' => 'Name and color are required.',
+        'invalid_color' => 'Invalid color. Use the #RRGGBB format.',
+        'in_use' => 'This category is in use by inventory items.',
+        'created' => 'Category created successfully.',
+        'updated' => 'Category updated successfully.',
+        'deleted' => 'Category deleted successfully.',
+        'fetch_error' => 'Error fetching categories.',
+        'create_error' => 'Error creating category.',
+        'update_error' => 'Error updating category.',
+        'delete_error' => 'Error deleting category.',
+    ],
+
+    'storages' => [
+        'not_found' => 'Storage not found.',
+        'name_required' => 'Name is required.',
+        'in_use' => 'This storage is in use by inventory items.',
+        'created' => 'Storage created successfully.',
+        'updated' => 'Storage updated successfully.',
+        'deleted' => 'Storage deleted successfully.',
+        'fetch_error' => 'Error fetching storages.',
+        'create_error' => 'Error creating storage.',
+        'update_error' => 'Error updating storage.',
+        'delete_error' => 'Error deleting storage.',
+    ],
+
+    'inventory_items' => [
+        'not_found' => 'Item not found.',
+        'required_fields' => 'Name and unit are required.',
+        'name_required' => 'Name is required.',
+        'invalid_quantity' => 'Invalid quantity.',
+        'invalid_components' => 'Each component needs an item and a quantity greater than zero.',
+        'invalid_reference' => 'The given unit, storage, category or component does not exist.',
+        'no_fields' => 'No field to update was provided.',
+        'build_quantity' => 'Quantity must be greater than zero.',
+        'no_components' => 'This item has no registered components.',
+        'insufficient_stock' => 'Insufficient stock of ":name". Required: :required, Available: :available.',
+        'created' => 'Item created successfully.',
+        'name_updated' => 'Name updated successfully.',
+        'storage_updated' => 'Storage updated successfully.',
+        'quantity_updated' => 'Quantity updated successfully.',
+        'built' => ':quantity unit(s) built successfully.',
+        'fetch_error' => 'Error fetching items.',
+        'create_error' => 'Error creating item.',
+        'update_error' => 'Error updating the item.',
+        'build_error' => 'Error building item.',
+    ],
+];
