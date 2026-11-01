@@ -1,11 +1,11 @@
 <?php
 
+use App\Actions\Auth\CreateRefreshTokenAction;
+use App\Actions\Auth\RefreshSessionAction;
+use App\Actions\Auth\RotateRefreshTokenAction;
 use App\Models\Auth\AccessToken;
 use App\Models\Auth\RefreshToken;
 use App\Models\User;
-use App\Services\Auth\CreateRefreshTokenService;
-use App\Services\Auth\RefreshSessionService;
-use App\Services\Auth\RotateRefreshTokenService;
 use Illuminate\Testing\TestResponse;
 
 function login(string $email = 'ana@example.com', string $password = 'secret123'): TestResponse {
@@ -146,10 +146,10 @@ describe('POST /api/auth/token/refresh', function () {
 
     it('gives concurrent refreshes with the same token the same new session', function () {
         $user = User::factory()->create();
-        $token = app(CreateRefreshTokenService::class)->execute($user->id)->token;
+        $token = app(CreateRefreshTokenAction::class)->handle($user->id)->token;
 
-        $a = app(RefreshSessionService::class)->execute($token);
-        $b = app(RefreshSessionService::class)->execute($token);
+        $a = app(RefreshSessionAction::class)->handle($token);
+        $b = app(RefreshSessionAction::class)->handle($token);
 
         expect($a->refresh_token->token)->toBe($b->refresh_token->token)
             ->and($a->access_token->token)->toBe($b->access_token->token)
@@ -158,25 +158,25 @@ describe('POST /api/auth/token/refresh', function () {
 
     it('revokes the whole family when an already rotated token is reused', function () {
         $user = User::factory()->create();
-        $original = app(CreateRefreshTokenService::class)->execute($user->id)->token;
-        $rotate = app(RotateRefreshTokenService::class);
+        $original = app(CreateRefreshTokenAction::class)->handle($user->id)->token;
+        $rotate = app(RotateRefreshTokenAction::class);
 
-        $rotated = $rotate->execute($original);
+        $rotated = $rotate->handle($original);
         expect($rotated)->not->toBeNull();
 
         // alguém reapresenta o token antigo (já trocado): sinal de roubo
-        expect($rotate->execute($original))->toBeNull();
+        expect($rotate->handle($original))->toBeNull();
 
         // até o token "legítimo" mais novo deixa de funcionar
-        expect($rotate->execute($rotated[1]->token))->toBeNull();
+        expect($rotate->handle($rotated[1]->token))->toBeNull();
     });
 
     it('rejects expired refresh tokens', function () {
         $user = User::factory()->create();
-        $token = app(CreateRefreshTokenService::class)->execute($user->id)->token;
+        $token = app(CreateRefreshTokenAction::class)->handle($user->id)->token;
         RefreshToken::query()->update(['expires_at' => now()->subSecond()]);
 
-        expect(app(RotateRefreshTokenService::class)->execute($token))->toBeNull();
+        expect(app(RotateRefreshTokenAction::class)->handle($token))->toBeNull();
     });
 });
 

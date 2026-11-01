@@ -2,7 +2,10 @@
 
 namespace App\Models\Inventory;
 
+use App\Models\Concerns\FindsOrFailsByKey;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -12,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  */
 class InventoryItem extends Model {
 
-    use HasFactory;
+    use FindsOrFailsByKey, HasFactory;
 
     protected $table = 'inventory_items';
 
@@ -44,7 +47,11 @@ class InventoryItem extends Model {
             ->withPivot('quantity_required', 'created_at');
     }
 
-    public function scopeSearch($query, ?string $search) {
-        return $query->when($search, fn($query) => $query->whereLike('name', '%' . $search . '%'));
+    /**
+     * @param  Builder<self>  $query
+     */
+    #[Scope]
+    protected function search(Builder $query, ?string $search): void {
+        $query->when($search, fn(Builder $query) => $query->whereLike('name', '%' . $search . '%'));
     }
 }

@@ -2,15 +2,10 @@
 
 use App\Models\Inventory\InventoryItem;
 use App\Models\Inventory\Storage;
-use App\Repositories\Inventory\StorageRepository;
 
 beforeEach(function () {
     $this->withUnencryptedCookies(sessionCookies());
 });
-
-function failStorageRepository(string $method): void {
-    test()->mock(StorageRepository::class, fn($mock) => $mock->shouldReceive($method)->andThrow(new RuntimeException('db down')));
-}
 
 describe('GET /api/storages', function () {
     it('lists storages ordered by name', function () {
@@ -24,7 +19,7 @@ describe('GET /api/storages', function () {
     });
 
     it('returns 500 when the database fails', function () {
-        failStorageRepository('all');
+        failTable('storages');
 
         $this->getJson('/api/storages')
             ->assertInternalServerError()
@@ -82,7 +77,7 @@ describe('DELETE /api/storages/{storage_id}', function () {
     });
 
     it('returns 500 when the database fails', function () {
-        failStorageRepository('delete');
+        failTable('storages');
 
         $this->deleteJson('/api/storages/1')
             ->assertInternalServerError()

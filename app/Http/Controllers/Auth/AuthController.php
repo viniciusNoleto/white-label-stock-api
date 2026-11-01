@@ -2,16 +2,16 @@
 
 namespace App\Http\Controllers\Auth;
 
+use App\Actions\Auth\LoginAction;
+use App\Actions\Auth\LogoutAction;
+use App\Actions\Auth\RefreshSessionAction;
 use App\Base\Http\Controllers\BaseController;
 use App\Base\Traits\AuthCookies;
-use App\DTO\Auth\LoginDTO;
+use App\Data\Auth\LoginDTO;
 use App\Enum\Auth\AuthCookieEnum;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Resources\Auth\AuthUserResource;
-use App\Services\Auth\FindUserByAccessTokenService;
-use App\Services\Auth\LoginService;
-use App\Services\Auth\LogoutService;
-use App\Services\Auth\RefreshSessionService;
+use App\Queries\Auth\FindUserByAccessTokenQuery;
 use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,12 +26,12 @@ class AuthController extends BaseController {
 
     /**
      * @param LoginRequest $request
-     * @param LoginService $service
+     * @param LoginAction $action
      * @return JsonResponse|Response
      */
-    public function login(LoginRequest $request, LoginService $service) {
+    public function login(LoginRequest $request, LoginAction $action) {
         try {
-            $session = $service->execute(LoginDTO::fromRequest($request));
+            $session = $action->handle(LoginDTO::fromRequest($request));
 
             return self::withAuthCookies(
                 self::successResponse(
@@ -47,12 +47,12 @@ class AuthController extends BaseController {
 
     /**
      * @param Request $request
-     * @param LogoutService $service
+     * @param LogoutAction $action
      * @return JsonResponse|Response
      */
-    public function logout(Request $request, LogoutService $service) {
+    public function logout(Request $request, LogoutAction $action) {
         try {
-            $service->execute(
+            $action->handle(
                 access_token: $request->cookie(AuthCookieEnum::ACCESS_TOKEN->value),
                 refresh_token: $request->cookie(AuthCookieEnum::REFRESH_TOKEN->value)
             );
@@ -70,12 +70,12 @@ class AuthController extends BaseController {
      * a chamada. Sem nenhum cookie é só um visitante anônimo — sucesso com `user: null`.
      *
      * @param Request $request
-     * @param FindUserByAccessTokenService $service
+     * @param FindUserByAccessTokenQuery $query
      * @return JsonResponse|Response
      */
-    public function me(Request $request, FindUserByAccessTokenService $service) {
+    public function me(Request $request, FindUserByAccessTokenQuery $query) {
         try {
-            $user = $service->execute($request->cookie(AuthCookieEnum::ACCESS_TOKEN->value));
+            $user = $query->get($request->cookie(AuthCookieEnum::ACCESS_TOKEN->value));
 
             if ($user) {
                 return self::successResponse(data: ['user' => AuthUserResource::make($user)]);
@@ -95,13 +95,13 @@ class AuthController extends BaseController {
      * Rotaciona o refresh_token e emite um access token novo. Sem refresh válido, apaga os cookies.
      *
      * @param Request $request
-     * @param RefreshSessionService $service
+     * @param RefreshSessionAction $action
      * @return JsonResponse|Response
      */
-    public function refreshToken(Request $request, RefreshSessionService $service) {
+    public function refreshToken(Request $request, RefreshSessionAction $action) {
         try {
             $refresh_token = $request->cookie(AuthCookieEnum::REFRESH_TOKEN->value);
-            $session = $refresh_token ? $service->execute($refresh_token) : null;
+            $session = $refresh_token ? $action->handle($refresh_token) : null;
 
             if (!$session) {
                 return self::withoutAuthCookies(self::errorResponse('messages.unauthorized', 401));

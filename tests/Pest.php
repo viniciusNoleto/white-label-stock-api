@@ -1,9 +1,10 @@
 <?php
 
+use App\Actions\Auth\CreateAccessTokenAction;
+use App\Actions\Auth\CreateRefreshTokenAction;
 use App\Models\User;
-use App\Services\Auth\CreateAccessTokenService;
-use App\Services\Auth\CreateRefreshTokenService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /*
@@ -39,7 +40,18 @@ function sessionCookies(?User $user = null): array {
     $user ??= User::factory()->create();
 
     return [
-        'access_token' => app(CreateAccessTokenService::class)->execute($user->id)->token,
-        'refresh_token' => app(CreateRefreshTokenService::class)->execute($user->id)->token,
+        'access_token' => app(CreateAccessTokenAction::class)->handle($user->id)->token,
+        'refresh_token' => app(CreateRefreshTokenAction::class)->handle($user->id)->token,
     ];
+}
+
+/**
+ * Simula falha de banco (o endpoint deve responder 500 com a mensagem `…_error`): renomeia a
+ * tabela dentro da transação do teste (o `RefreshDatabase` desfaz no rollback).
+ *
+ * @param string $table
+ * @return void
+ */
+function failTable(string $table): void {
+    DB::statement("ALTER TABLE {$table} RENAME TO {$table}_unavailable");
 }

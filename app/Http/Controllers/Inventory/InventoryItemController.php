@@ -2,18 +2,20 @@
 
 namespace App\Http\Controllers\Inventory;
 
+use App\Actions\Inventory\InventoryItem\BuildInventoryItemAction;
+use App\Actions\Inventory\InventoryItem\CreateInventoryItemAction;
+use App\Actions\Inventory\InventoryItem\UpdateInventoryItemAction;
 use App\Base\Http\Controllers\BaseController;
-use App\DTO\Inventory\InventoryItem\BuildInventoryItemDTO;
-use App\DTO\Inventory\InventoryItem\CreateInventoryItemDTO;
-use App\DTO\Inventory\InventoryItem\UpdateInventoryItemDTO;
+use App\Data\Inventory\InventoryItem\BuildInventoryItemDTO;
+use App\Data\Inventory\InventoryItem\CreateInventoryItemDTO;
+use App\Data\Inventory\InventoryItem\ListInventoryItemsDTO;
+use App\Data\Inventory\InventoryItem\UpdateInventoryItemDTO;
 use App\Http\Requests\InventoryItem\BuildInventoryItemRequest;
 use App\Http\Requests\InventoryItem\CreateInventoryItemRequest;
 use App\Http\Requests\InventoryItem\UpdateInventoryItemRequest;
+use App\Http\Resources\Inventory\InventoryItemListResource;
 use App\Http\Resources\Inventory\InventoryItemResource;
-use App\Services\Inventory\InventoryItem\BuildInventoryItemService;
-use App\Services\Inventory\InventoryItem\CreateInventoryItemService;
-use App\Services\Inventory\InventoryItem\ListInventoryItemsService;
-use App\Services\Inventory\InventoryItem\UpdateInventoryItemService;
+use App\Queries\Inventory\ListInventoryItemsQuery;
 use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,13 +26,24 @@ class InventoryItemController extends BaseController {
 
     /**
      * @param Request $request
-     * @param ListInventoryItemsService $service
+     * @param ListInventoryItemsQuery $query
      * @return JsonResponse|Response
      */
-    public function index(Request $request, ListInventoryItemsService $service) {
+    public function index(Request $request, ListInventoryItemsQuery $query) {
         try {
+            $dto = ListInventoryItemsDTO::fromRequest($request);
+            $paginator = $query->get($dto);
+
             return self::successResponse(
-                data: $service->execute($request)
+                data: [
+                    'items' => InventoryItemListResource::collection($paginator->items()),
+                    'meta' => [
+                        'page' => $dto->page,
+                        'per_page' => $dto->per_page,
+                        'total' => $paginator->total(),
+                        'last_page' => max(1, $paginator->lastPage()),
+                    ],
+                ]
             );
         } catch (Exception $exception) {
             return self::returnError($exception, 'messages.inventory_items.fetch_error');
@@ -39,14 +52,14 @@ class InventoryItemController extends BaseController {
 
     /**
      * @param CreateInventoryItemRequest $request
-     * @param CreateInventoryItemService $service
+     * @param CreateInventoryItemAction $action
      * @return JsonResponse|Response
      * @throws Throwable
      */
-    public function store(CreateInventoryItemRequest $request, CreateInventoryItemService $service) {
+    public function store(CreateInventoryItemRequest $request, CreateInventoryItemAction $action) {
         try {
             return self::successResponse(
-                data: InventoryItemResource::make($service->execute(CreateInventoryItemDTO::fromRequest($request))),
+                data: InventoryItemResource::make($action->handle(CreateInventoryItemDTO::fromRequest($request))),
                 message: 'messages.inventory_items.created',
                 status_code: 201
             );
@@ -59,17 +72,17 @@ class InventoryItemController extends BaseController {
      * Atualização parcial: quantidade (absoluta, soma ou subtração), nome e/ou armazenamento.
      *
      * @param UpdateInventoryItemRequest $request
-     * @param UpdateInventoryItemService $service
+     * @param UpdateInventoryItemAction $action
      * @param string $inventory_item_id
      * @return JsonResponse|Response
      */
-    public function update(UpdateInventoryItemRequest $request, UpdateInventoryItemService $service, string $inventory_item_id) {
+    public function update(UpdateInventoryItemRequest $request, UpdateInventoryItemAction $action, string $inventory_item_id) {
         try {
             $dto = UpdateInventoryItemDTO::fromRequest($request);
 
             return self::successResponse(
-                data: InventoryItemResource::make($service->execute($inventory_item_id, $dto)),
-                message: $service->successMessage($dto)
+                data: InventoryItemResource::make($action->handle($inventory_item_id, $dto)),
+                message: $this->updateMessage($dto)
             );
         } catch (Exception $exception) {
             return self::returnError($exception, 'messages.inventory_items.update_error');
@@ -78,22 +91,36 @@ class InventoryItemController extends BaseController {
 
     /**
      * @param BuildInventoryItemRequest $request
-     * @param BuildInventoryItemService $service
+     * @param BuildInventoryItemAction $action
      * @param string $inventory_item_id
      * @return JsonResponse|Response
      * @throws Throwable
      */
-    public function build(BuildInventoryItemRequest $request, BuildInventoryItemService $service, string $inventory_item_id) {
+    public function build(BuildInventoryItemRequest $request, BuildInventoryItemAction $action, string $inventory_item_id) {
         try {
             $dto = BuildInventoryItemDTO::fromRequest($request);
 
             return self::successResponse(
-                data: InventoryItemResource::make($service->execute($inventory_item_id, $dto)),
+                data: InventoryItemResource::make($action->handle($inventory_item_id, $dto)),
                 message: 'messages.inventory_items.built',
                 replace: ['quantity' => format_decimal($dto->quantity)]
             );
         } catch (Exception $exception) {
             return self::returnError($exception, 'messages.inventory_items.build_error');
         }
+    }
+
+    /**
+     * Mensagem de sucesso conforme o que foi alterado.
+     *
+     * @param UpdateInventoryItemDTO $dto
+     * @return string
+     */
+    private function updateMessage(UpdateInventoryItemDTO $dto): string {
+        return match (true) {
+            $dto->changesName() => 'messages.inventory_items.name_updated',
+            $dto->has_storage_id => 'messages.inventory_items.storage_updated',
+            default => 'messages.inventory_items.quantity_updated',
+        };
     }
 }

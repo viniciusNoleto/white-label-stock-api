@@ -2,8 +2,8 @@
 
 namespace App\Base\Traits;
 
-use App\DTO\Auth\IssuedTokenDTO;
-use App\DTO\Auth\SessionDTO;
+use App\Data\Auth\IssuedTokenDTO;
+use App\Data\Auth\SessionDTO;
 use App\Enum\Auth\AuthCookieEnum;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpFoundation\Cookie;

@@ -2,14 +2,14 @@
 
 namespace App\Http\Controllers\Inventory;
 
+use App\Actions\Inventory\ItemCategory\CreateItemCategoryAction;
+use App\Actions\Inventory\ItemCategory\DeleteItemCategoryAction;
+use App\Actions\Inventory\ItemCategory\UpdateItemCategoryAction;
 use App\Base\Http\Controllers\BaseController;
-use App\DTO\Inventory\ItemCategory\SaveItemCategoryDTO;
+use App\Data\Inventory\ItemCategory\SaveItemCategoryDTO;
 use App\Http\Requests\ItemCategory\SaveItemCategoryRequest;
 use App\Http\Resources\Inventory\ItemCategoryResource;
-use App\Services\Inventory\ItemCategory\CreateItemCategoryService;
-use App\Services\Inventory\ItemCategory\DeleteItemCategoryService;
-use App\Services\Inventory\ItemCategory\ListItemCategoriesService;
-use App\Services\Inventory\ItemCategory\UpdateItemCategoryService;
+use App\Models\Inventory\ItemCategory;
 use Exception;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -17,13 +17,12 @@ use Symfony\Component\HttpFoundation\Response;
 class ItemCategoryController extends BaseController {
 
     /**
-     * @param ListItemCategoriesService $service
      * @return JsonResponse|Response
      */
-    public function index(ListItemCategoriesService $service) {
+    public function index() {
         try {
             return self::successResponse(
-                data: ItemCategoryResource::collection($service->execute())
+                data: ItemCategoryResource::collection(ItemCategory::query()->orderBy('name')->orderBy('id')->get())
             );
         } catch (Exception $exception) {
             return self::returnError($exception, 'messages.item_categories.fetch_error');
@@ -32,13 +31,13 @@ class ItemCategoryController extends BaseController {
 
     /**
      * @param SaveItemCategoryRequest $request
-     * @param CreateItemCategoryService $service
+     * @param CreateItemCategoryAction $action
      * @return JsonResponse|Response
      */
-    public function store(SaveItemCategoryRequest $request, CreateItemCategoryService $service) {
+    public function store(SaveItemCategoryRequest $request, CreateItemCategoryAction $action) {
         try {
             return self::successResponse(
-                data: ItemCategoryResource::make($service->execute(SaveItemCategoryDTO::fromRequest($request))),
+                data: ItemCategoryResource::make($action->handle(SaveItemCategoryDTO::fromRequest($request))),
                 message: 'messages.item_categories.created',
                 status_code: 201
             );
@@ -49,14 +48,14 @@ class ItemCategoryController extends BaseController {
 
     /**
      * @param SaveItemCategoryRequest $request
-     * @param UpdateItemCategoryService $service
+     * @param UpdateItemCategoryAction $action
      * @param string $item_category_id
      * @return JsonResponse|Response
      */
-    public function update(SaveItemCategoryRequest $request, UpdateItemCategoryService $service, string $item_category_id) {
+    public function update(SaveItemCategoryRequest $request, UpdateItemCategoryAction $action, string $item_category_id) {
         try {
             return self::successResponse(
-                data: ItemCategoryResource::make($service->execute($item_category_id, SaveItemCategoryDTO::fromRequest($request))),
+                data: ItemCategoryResource::make($action->handle($item_category_id, SaveItemCategoryDTO::fromRequest($request))),
                 message: 'messages.item_categories.updated'
             );
         } catch (Exception $exception) {
@@ -65,13 +64,13 @@ class ItemCategoryController extends BaseController {
     }
 
     /**
-     * @param DeleteItemCategoryService $service
+     * @param DeleteItemCategoryAction $action
      * @param string $item_category_id
      * @return JsonResponse|Response
      */
-    public function destroy(DeleteItemCategoryService $service, string $item_category_id) {
+    public function destroy(DeleteItemCategoryAction $action, string $item_category_id) {
         try {
-            $service->execute($item_category_id);
+            $action->handle($item_category_id);
 
             return self::successResponse(message: 'messages.item_categories.deleted');
         } catch (Exception $exception) {

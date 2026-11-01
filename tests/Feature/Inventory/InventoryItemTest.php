@@ -4,7 +4,6 @@ use App\Models\Inventory\InventoryItem;
 use App\Models\Inventory\ItemCategory;
 use App\Models\Inventory\Storage;
 use App\Models\Inventory\Unit;
-use App\Repositories\Inventory\InventoryItemRepository;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 
@@ -14,10 +13,6 @@ beforeEach(function () {
 
 function listItems(string $query = ''): TestResponse {
     return test()->getJson("/api/inventory-items{$query}");
-}
-
-function failInventoryItemRepository(string $method): void {
-    test()->mock(InventoryItemRepository::class, fn($mock) => $mock->shouldReceive($method)->andThrow(new RuntimeException('db down')));
 }
 
 function itemQuantities(): array {
@@ -82,7 +77,7 @@ describe('GET /api/inventory-items', function () {
     });
 
     it('returns 500 when the database fails', function () {
-        failInventoryItemRepository('filterAndPaginate');
+        failTable('inventory_items');
 
         listItems()
             ->assertInternalServerError()
@@ -168,7 +163,7 @@ describe('POST /api/inventory-items', function () {
     });
 
     it('returns 500 when the database fails', function () {
-        failInventoryItemRepository('save');
+        failTable('inventory_items');
         $unit = Unit::factory()->create();
 
         $this->postJson('/api/inventory-items', ['name' => 'x', 'unit_id' => $unit->id])
@@ -257,7 +252,7 @@ describe('PATCH /api/inventory-items/{inventory_item_id}', function () {
     });
 
     it('returns 500 when the database fails', function () {
-        failInventoryItemRepository('updateById');
+        failTable('inventory_items');
 
         $this->patchJson('/api/inventory-items/1', ['quantity' => 1])
             ->assertInternalServerError()
@@ -331,7 +326,7 @@ describe('POST /api/inventory-items/{inventory_item_id}/build', function () {
     });
 
     it('returns 500 when the database fails', function () {
-        failInventoryItemRepository('recipe');
+        failTable('inventory_item_has_component');
 
         $this->postJson('/api/inventory-items/1/build', ['quantity' => 1])
             ->assertInternalServerError()

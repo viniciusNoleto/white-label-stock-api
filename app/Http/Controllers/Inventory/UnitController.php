@@ -2,14 +2,14 @@
 
 namespace App\Http\Controllers\Inventory;
 
+use App\Actions\Inventory\Unit\CreateUnitAction;
+use App\Actions\Inventory\Unit\DeleteUnitAction;
+use App\Actions\Inventory\Unit\UpdateUnitAction;
 use App\Base\Http\Controllers\BaseController;
-use App\DTO\Inventory\Unit\SaveUnitDTO;
+use App\Data\Inventory\Unit\SaveUnitDTO;
 use App\Http\Requests\Unit\SaveUnitRequest;
 use App\Http\Resources\Inventory\UnitResource;
-use App\Services\Inventory\Unit\CreateUnitService;
-use App\Services\Inventory\Unit\DeleteUnitService;
-use App\Services\Inventory\Unit\ListUnitsService;
-use App\Services\Inventory\Unit\UpdateUnitService;
+use App\Models\Inventory\Unit;
 use Exception;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -17,13 +17,12 @@ use Symfony\Component\HttpFoundation\Response;
 class UnitController extends BaseController {
 
     /**
-     * @param ListUnitsService $service
      * @return JsonResponse|Response
      */
-    public function index(ListUnitsService $service) {
+    public function index() {
         try {
             return self::successResponse(
-                data: UnitResource::collection($service->execute())
+                data: UnitResource::collection(Unit::query()->orderBy('name')->orderBy('id')->get())
             );
         } catch (Exception $exception) {
             return self::returnError($exception, 'messages.units.fetch_error');
@@ -32,13 +31,13 @@ class UnitController extends BaseController {
 
     /**
      * @param SaveUnitRequest $request
-     * @param CreateUnitService $service
+     * @param CreateUnitAction $action
      * @return JsonResponse|Response
      */
-    public function store(SaveUnitRequest $request, CreateUnitService $service) {
+    public function store(SaveUnitRequest $request, CreateUnitAction $action) {
         try {
             return self::successResponse(
-                data: UnitResource::make($service->execute(SaveUnitDTO::fromRequest($request))),
+                data: UnitResource::make($action->handle(SaveUnitDTO::fromRequest($request))),
                 message: 'messages.units.created',
                 status_code: 201
             );
@@ -49,14 +48,14 @@ class UnitController extends BaseController {
 
     /**
      * @param SaveUnitRequest $request
-     * @param UpdateUnitService $service
+     * @param UpdateUnitAction $action
      * @param string $unit_id
      * @return JsonResponse|Response
      */
-    public function update(SaveUnitRequest $request, UpdateUnitService $service, string $unit_id) {
+    public function update(SaveUnitRequest $request, UpdateUnitAction $action, string $unit_id) {
         try {
             return self::successResponse(
-                data: UnitResource::make($service->execute($unit_id, SaveUnitDTO::fromRequest($request))),
+                data: UnitResource::make($action->handle($unit_id, SaveUnitDTO::fromRequest($request))),
                 message: 'messages.units.updated'
             );
         } catch (Exception $exception) {
@@ -65,13 +64,13 @@ class UnitController extends BaseController {
     }
 
     /**
-     * @param DeleteUnitService $service
+     * @param DeleteUnitAction $action
      * @param string $unit_id
      * @return JsonResponse|Response
      */
-    public function destroy(DeleteUnitService $service, string $unit_id) {
+    public function destroy(DeleteUnitAction $action, string $unit_id) {
         try {
-            $service->execute($unit_id);
+            $action->handle($unit_id);
 
             return self::successResponse(message: 'messages.units.deleted');
         } catch (Exception $exception) {

@@ -2,12 +2,13 @@
 
 namespace App\Models\Inventory;
 
+use App\Models\Concerns\FindsOrFailsByKey;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Storage extends Model {
 
-    use HasFactory;
+    use FindsOrFailsByKey, HasFactory;
 
     protected $table = 'storages';
 

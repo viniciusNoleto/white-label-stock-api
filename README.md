@@ -6,7 +6,7 @@ The web app (Angular SSR) is a separate project. Its Express server proxies `/ap
 
 ## Stack
 
-- [Laravel 13](https://laravel.com) — Controller → Service → Repository, [spatie/laravel-data](https://spatie.be/docs/laravel-data) DTOs, FormRequests, API Resources
+- [Laravel 13](https://laravel.com) — Controller → FormRequest → DTO → Action → Eloquent, [spatie/laravel-data](https://spatie.be/docs/laravel-data) DTOs, FormRequests, API Resources
 - PostgreSQL 16
 - [Pest 5](https://pestphp.com) (feature tests against a real Postgres database)
 - Docker: nginx + php-fpm + Postgres
@@ -62,6 +62,7 @@ make install
 |---|---|
 | `make up` / `make down` / `make restart` | Start / stop / restart the containers |
 | `make shell` / `make in` | Shell in the PHP container / pick any running container |
+| `make tinker` | Laravel Tinker (REPL) in the PHP container |
 | `make migrate` / `make migrate-fresh` / `make db-seed` | Migrations / rebuild the database / seed |
 | `make test` | Pest suite (`make test TEST="--filter=units"`) |
 | `make recreate-testing-database` | Drop and recreate `${DB_DATABASE}_testing` |

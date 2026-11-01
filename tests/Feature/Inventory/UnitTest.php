@@ -2,15 +2,10 @@
 
 use App\Models\Inventory\InventoryItem;
 use App\Models\Inventory\Unit;
-use App\Repositories\Inventory\UnitRepository;
 
 beforeEach(function () {
     $this->withUnencryptedCookies(sessionCookies());
 });
-
-function failUnitRepository(string $method): void {
-    test()->mock(UnitRepository::class, fn($mock) => $mock->shouldReceive($method)->andThrow(new RuntimeException('db down')));
-}
 
 describe('GET /api/units', function () {
     it('lists units ordered by name in the API envelope', function () {
@@ -28,7 +23,7 @@ describe('GET /api/units', function () {
     });
 
     it('returns 500 when the database fails', function () {
-        failUnitRepository('all');
+        failTable('units');
 
         $this->getJson('/api/units')
             ->assertInternalServerError()
@@ -70,7 +65,7 @@ describe('POST /api/units', function () {
     });
 
     it('returns 500 when the database fails', function () {
-        failUnitRepository('save');
+        failTable('units');
 
         $this->postJson('/api/units', ['name' => 'Litro', 'abbreviation' => 'L'])
             ->assertInternalServerError()
@@ -105,7 +100,7 @@ describe('PUT /api/units/{unit_id}', function () {
     })->with(['999', 'abc', '-1']);
 
     it('returns 500 when the database fails', function () {
-        failUnitRepository('update');
+        failTable('units');
 
         $this->putJson('/api/units/1', ['name' => 'a', 'abbreviation' => 'b'])
             ->assertInternalServerError()
@@ -140,7 +135,7 @@ describe('DELETE /api/units/{unit_id}', function () {
     });
 
     it('returns 500 when the database fails', function () {
-        failUnitRepository('delete');
+        failTable('units');
 
         $this->deleteJson('/api/units/1')
             ->assertInternalServerError()

@@ -2,14 +2,14 @@
 
 namespace App\Http\Controllers\Inventory;
 
+use App\Actions\Inventory\Storage\CreateStorageAction;
+use App\Actions\Inventory\Storage\DeleteStorageAction;
+use App\Actions\Inventory\Storage\UpdateStorageAction;
 use App\Base\Http\Controllers\BaseController;
-use App\DTO\Inventory\Storage\SaveStorageDTO;
+use App\Data\Inventory\Storage\SaveStorageDTO;
 use App\Http\Requests\Storage\SaveStorageRequest;
 use App\Http\Resources\Inventory\StorageResource;
-use App\Services\Inventory\Storage\CreateStorageService;
-use App\Services\Inventory\Storage\DeleteStorageService;
-use App\Services\Inventory\Storage\ListStoragesService;
-use App\Services\Inventory\Storage\UpdateStorageService;
+use App\Models\Inventory\Storage;
 use Exception;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -17,13 +17,12 @@ use Symfony\Component\HttpFoundation\Response;
 class StorageController extends BaseController {
 
     /**
-     * @param ListStoragesService $service
      * @return JsonResponse|Response
      */
-    public function index(ListStoragesService $service) {
+    public function index() {
         try {
             return self::successResponse(
-                data: StorageResource::collection($service->execute())
+                data: StorageResource::collection(Storage::query()->orderBy('name')->orderBy('id')->get())
             );
         } catch (Exception $exception) {
             return self::returnError($exception, 'messages.storages.fetch_error');
@@ -32,13 +31,13 @@ class StorageController extends BaseController {
 
     /**
      * @param SaveStorageRequest $request
-     * @param CreateStorageService $service
+     * @param CreateStorageAction $action
      * @return JsonResponse|Response
      */
-    public function store(SaveStorageRequest $request, CreateStorageService $service) {
+    public function store(SaveStorageRequest $request, CreateStorageAction $action) {
         try {
             return self::successResponse(
-                data: StorageResource::make($service->execute(SaveStorageDTO::fromRequest($request))),
+                data: StorageResource::make($action->handle(SaveStorageDTO::fromRequest($request))),
                 message: 'messages.storages.created',
                 status_code: 201
             );
@@ -49,14 +48,14 @@ class StorageController extends BaseController {
 
     /**
      * @param SaveStorageRequest $request
-     * @param UpdateStorageService $service
+     * @param UpdateStorageAction $action
      * @param string $storage_id
      * @return JsonResponse|Response
      */
-    public function update(SaveStorageRequest $request, UpdateStorageService $service, string $storage_id) {
+    public function update(SaveStorageRequest $request, UpdateStorageAction $action, string $storage_id) {
         try {
             return self::successResponse(
-                data: StorageResource::make($service->execute($storage_id, SaveStorageDTO::fromRequest($request))),
+                data: StorageResource::make($action->handle($storage_id, SaveStorageDTO::fromRequest($request))),
                 message: 'messages.storages.updated'
             );
         } catch (Exception $exception) {
@@ -65,13 +64,13 @@ class StorageController extends BaseController {
     }
 
     /**
-     * @param DeleteStorageService $service
+     * @param DeleteStorageAction $action
      * @param string $storage_id
      * @return JsonResponse|Response
      */
-    public function destroy(DeleteStorageService $service, string $storage_id) {
+    public function destroy(DeleteStorageAction $action, string $storage_id) {
         try {
-            $service->execute($storage_id);
+            $action->handle($storage_id);
 
             return self::successResponse(message: 'messages.storages.deleted');
         } catch (Exception $exception) {

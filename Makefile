@@ -77,6 +77,9 @@ in: ## Lista todos os containers levantados para o usuário escolher um e entrar
 shell: ## Abre um shell no container do PHP
 	@$(COMPOSE) exec -it php-fpm bash
 
+tinker: ## Abre o Tinker (REPL do Laravel) no container do PHP
+	@$(COMPOSE) exec -it php-fpm php artisan tinker
+
 TEST ?=
 test: ## Roda os testes (Pest). Ex.: make test TEST="--filter=units"
 	@$(PHP) php artisan config:clear --ansi

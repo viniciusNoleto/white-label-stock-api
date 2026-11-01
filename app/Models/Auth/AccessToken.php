@@ -3,6 +3,8 @@
 namespace App\Models\Auth;
 
 use App\Models\User;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -31,11 +33,19 @@ class AccessToken extends Model {
         return $this->belongsTo(User::class, 'user_id', 'id');
     }
 
-    public function scopeByToken($query, string $token) {
-        return $query->where('token_hash', hash_token($token));
+    /**
+     * @param  Builder<self>  $query
+     */
+    #[Scope]
+    protected function byToken(Builder $query, string $token): void {
+        $query->where('token_hash', hash_token($token));
     }
 
-    public function scopeNotExpired($query) {
-        return $query->where('expires_at', '>', now());
+    /**
+     * @param  Builder<self>  $query
+     */
+    #[Scope]
+    protected function notExpired(Builder $query): void {
+        $query->where('expires_at', '>', now());
     }
 }

@@ -2,15 +2,10 @@
 
 use App\Models\Inventory\InventoryItem;
 use App\Models\Inventory\ItemCategory;
-use App\Repositories\Inventory\ItemCategoryRepository;
 
 beforeEach(function () {
     $this->withUnencryptedCookies(sessionCookies());
 });
-
-function failItemCategoryRepository(string $method): void {
-    test()->mock(ItemCategoryRepository::class, fn($mock) => $mock->shouldReceive($method)->andThrow(new RuntimeException('db down')));
-}
 
 describe('GET /api/item-categories', function () {
     it('lists categories ordered by name', function () {
@@ -24,7 +19,7 @@ describe('GET /api/item-categories', function () {
     });
 
     it('returns 500 when the database fails', function () {
-        failItemCategoryRepository('all');
+        failTable('item_categories');
 
         $this->getJson('/api/item-categories')
             ->assertInternalServerError()
@@ -75,7 +70,7 @@ describe('PUT /api/item-categories/{item_category_id}', function () {
     });
 
     it('returns 500 when the database fails', function () {
-        failItemCategoryRepository('update');
+        failTable('item_categories');
 
         $this->putJson('/api/item-categories/1', ['name' => 'a', 'color_hex' => '#000000'])
             ->assertInternalServerError()

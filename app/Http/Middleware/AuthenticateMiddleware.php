@@ -4,7 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Base\Traits\Response;
 use App\Enum\Auth\AuthCookieEnum;
-use App\Services\Auth\FindUserByAccessTokenService;
+use App\Queries\Auth\FindUserByAccessTokenQuery;
 use Closure;
 use Exception;
 use Illuminate\Http\Request;
@@ -19,13 +19,13 @@ class AuthenticateMiddleware {
     use Response;
 
     public function __construct(
-        private readonly FindUserByAccessTokenService $findUserByAccessTokenService
+        private readonly FindUserByAccessTokenQuery $findUserByAccessToken
     ) {
     }
 
     public function handle(Request $request, Closure $next): mixed {
         try {
-            $user = $this->findUserByAccessTokenService->execute(
+            $user = $this->findUserByAccessToken->get(
                 $request->cookie(AuthCookieEnum::ACCESS_TOKEN->value)
             );
 
