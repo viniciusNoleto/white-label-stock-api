@@ -6,7 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * Item da listagem, com unidade, armazenamento, categorias e componentes aninhados.
+ * Item da listagem, com a quantidade em pacotes de entrega pendentes (`packaged_quantity`), unidade, armazenamento, categorias e componentes aninhados.
  */
 class InventoryItemListResource extends JsonResource {
 
@@ -18,6 +18,7 @@ class InventoryItemListResource extends JsonResource {
             'id' => $this->id,
             'name' => $this->name,
             'quantity' => $this->quantity,
+            'packaged_quantity' => $this->packaged_quantity,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
             'unit' => [

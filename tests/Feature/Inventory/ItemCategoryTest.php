@@ -4,7 +4,7 @@ use App\Models\Inventory\InventoryItem;
 use App\Models\Inventory\ItemCategory;
 
 beforeEach(function () {
-    $this->withUnencryptedCookies(sessionCookies());
+    $this->withToken(accessToken());
 });
 
 describe('GET /api/item-categories', function () {

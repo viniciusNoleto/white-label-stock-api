@@ -2,7 +2,7 @@
     "$schema": "https://getcomposer.org/schema.json",
     "name": "viniciusnoleto/white-label-stock-api",
     "type": "project",
-    "description": "REST API of the White Label Inventory System (Laravel).",
+    "description": "REST API of the White Label Stock (Laravel).",
     "keywords": [
         "laravel",
         "inventory",

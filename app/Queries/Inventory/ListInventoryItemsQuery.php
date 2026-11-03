@@ -9,7 +9,7 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 final class ListInventoryItemsQuery {
 
     /**
-     * Busca por nome, ordenada por nome, com unidade, armazenamento, categorias e componentes.
+     * Busca por nome, ordenada por nome, com quantidade empacotada, unidade, armazenamento, categorias e componentes.
      *
      * @param ListInventoryItemsDTO $dto
      * @return LengthAwarePaginator
@@ -17,6 +17,7 @@ final class ListInventoryItemsQuery {
     public function get(ListInventoryItemsDTO $dto): LengthAwarePaginator {
         return InventoryItem::query()
             ->search($dto->search)
+            ->withPackagedQuantity()
             ->with([
                 'unit',
                 'storage',

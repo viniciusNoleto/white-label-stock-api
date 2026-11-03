@@ -6,23 +6,22 @@ use App\Actions\Auth\LoginAction;
 use App\Actions\Auth\LogoutAction;
 use App\Actions\Auth\RefreshSessionAction;
 use App\Base\Http\Controllers\BaseController;
-use App\Base\Traits\AuthCookies;
 use App\Data\Auth\LoginDTO;
-use App\Enum\Auth\AuthCookieEnum;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\Auth\LogoutRequest;
+use App\Http\Requests\Auth\RefreshTokenRequest;
 use App\Http\Resources\Auth\AuthUserResource;
-use App\Queries\Auth\FindUserByAccessTokenQuery;
+use App\Http\Resources\Auth\SessionResource;
 use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Os tokens nunca vão no corpo: só em cookies httpOnly (ver `AuthCookies`).
+ * Login e refresh devolvem os tokens no corpo (`SessionResource`); as rotas protegidas
+ * recebem o access token no header `Authorization: Bearer`.
  */
 class AuthController extends BaseController {
-
-    use AuthCookies;
 
     /**
      * @param LoginRequest $request
@@ -31,14 +30,9 @@ class AuthController extends BaseController {
      */
     public function login(LoginRequest $request, LoginAction $action) {
         try {
-            $session = $action->handle(LoginDTO::fromRequest($request));
-
-            return self::withAuthCookies(
-                self::successResponse(
-                    data: ['user' => AuthUserResource::make($session->user)],
-                    message: 'messages.auth.logged_in'
-                ),
-                $session
+            return self::successResponse(
+                data: SessionResource::make($action->handle(LoginDTO::fromRequest($request))),
+                message: 'messages.auth.logged_in'
             );
         } catch (Exception $exception) {
             return self::returnError($exception);
@@ -46,71 +40,55 @@ class AuthController extends BaseController {
     }
 
     /**
-     * @param Request $request
+     * Fora do middleware `auth`: com o access já expirado, ainda revoga o refresh_token.
+     *
+     * @param LogoutRequest $request
      * @param LogoutAction $action
      * @return JsonResponse|Response
      */
-    public function logout(Request $request, LogoutAction $action) {
+    public function logout(LogoutRequest $request, LogoutAction $action) {
         try {
             $action->handle(
-                access_token: $request->cookie(AuthCookieEnum::ACCESS_TOKEN->value),
-                refresh_token: $request->cookie(AuthCookieEnum::REFRESH_TOKEN->value)
+                access_token: $request->bearerToken(),
+                refresh_token: $request->validated('refresh_token')
             );
 
-            return self::withoutAuthCookies(
-                self::successResponse(message: 'messages.auth.logged_out')
-            );
+            return self::successResponse(message: 'messages.auth.logged_out');
         } catch (Exception $exception) {
             return self::returnError($exception);
         }
     }
 
     /**
-     * Access expirado mas ainda há refresh_token: o 401 faz o web renovar a sessão e repetir
-     * a chamada. Sem nenhum cookie é só um visitante anônimo — sucesso com `user: null`.
+     * Rota protegida: sem access token válido o middleware responde 401 (o web renova e repete).
      *
      * @param Request $request
-     * @param FindUserByAccessTokenQuery $query
      * @return JsonResponse|Response
      */
-    public function me(Request $request, FindUserByAccessTokenQuery $query) {
+    public function me(Request $request) {
         try {
-            $user = $query->get($request->cookie(AuthCookieEnum::ACCESS_TOKEN->value));
-
-            if ($user) {
-                return self::successResponse(data: ['user' => AuthUserResource::make($user)]);
-            }
-
-            if ($request->cookie(AuthCookieEnum::REFRESH_TOKEN->value)) {
-                return self::errorResponse('messages.unauthorized', 401);
-            }
-
-            return self::successResponse(data: ['user' => null]);
+            return self::successResponse(data: ['user' => AuthUserResource::make($request->user())]);
         } catch (Exception $exception) {
             return self::returnError($exception);
         }
     }
 
     /**
-     * Rotaciona o refresh_token e emite um access token novo. Sem refresh válido, apaga os cookies.
+     * Rotaciona o refresh_token e emite um access token novo.
      *
-     * @param Request $request
+     * @param RefreshTokenRequest $request
      * @param RefreshSessionAction $action
      * @return JsonResponse|Response
      */
-    public function refreshToken(Request $request, RefreshSessionAction $action) {
+    public function refreshToken(RefreshTokenRequest $request, RefreshSessionAction $action) {
         try {
-            $refresh_token = $request->cookie(AuthCookieEnum::REFRESH_TOKEN->value);
-            $session = $refresh_token ? $action->handle($refresh_token) : null;
+            $session = $action->handle($request->validated('refresh_token'));
 
             if (!$session) {
-                return self::withoutAuthCookies(self::errorResponse('messages.unauthorized', 401));
+                return self::errorResponse('messages.unauthorized', 401);
             }
 
-            return self::withAuthCookies(
-                self::successResponse(data: ['user' => AuthUserResource::make($session->user)]),
-                $session
-            );
+            return self::successResponse(data: SessionResource::make($session));
         } catch (Exception $exception) {
             return self::returnError($exception);
         }

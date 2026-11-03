@@ -3,7 +3,7 @@
 namespace App\Enum\Locale;
 
 /**
- * Idiomas das mensagens devolvidas pela API: a chave é a do front
+ * Idiomas das mensagens devolvidas pela API: a chave é a do web
  * (`pt-br`, `es-mx`, `en-us`), o método aponta para a pasta de `lang/`.
  */
 enum ApiLocaleEnum: string {

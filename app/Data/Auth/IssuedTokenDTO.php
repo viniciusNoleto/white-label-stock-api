@@ -6,7 +6,7 @@ use Illuminate\Support\Carbon;
 use Spatie\LaravelData\Data;
 
 /**
- * Token recém-emitido: o valor cru (vai só para o cookie) e quando expira.
+ * Token recém-emitido: o valor cru (vai só na resposta, nunca para o banco) e quando expira.
  */
 class IssuedTokenDTO extends Data {
 

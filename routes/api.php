@@ -2,6 +2,7 @@
 
 use App\Base\Traits\Response;
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Delivery\DeliveryPackageController;
 use App\Http\Controllers\Inventory\InventoryItemController;
 use App\Http\Controllers\Inventory\ItemCategoryController;
 use App\Http\Controllers\Inventory\StorageController;
@@ -11,7 +12,7 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('auth')->group(function () {
     Route::post('login', [AuthController::class, 'login'])->name('auth.login');
     Route::post('logout', [AuthController::class, 'logout'])->name('auth.logout');
-    Route::get('me', [AuthController::class, 'me'])->name('auth.me');
+    Route::get('me', [AuthController::class, 'me'])->middleware('auth')->name('auth.me');
     Route::prefix('token')->group(function () {
         Route::post('refresh', [AuthController::class, 'refreshToken'])->name('auth.token.refresh');
     });
@@ -45,6 +46,17 @@ Route::middleware('auth')->group(function () {
         Route::prefix('{inventory_item_id}')->group(function () {
             Route::patch('', [InventoryItemController::class, 'update'])->name('inventory-items.update');
             Route::post('build', [InventoryItemController::class, 'build'])->name('inventory-items.build');
+        });
+    });
+
+    Route::prefix('delivery-packages')->group(function () {
+        Route::get('', [DeliveryPackageController::class, 'index'])->name('delivery-packages.index');
+        Route::post('', [DeliveryPackageController::class, 'store'])->name('delivery-packages.store');
+        Route::prefix('{delivery_package_id}')->group(function () {
+            Route::get('', [DeliveryPackageController::class, 'show'])->name('delivery-packages.show');
+            Route::put('', [DeliveryPackageController::class, 'update'])->name('delivery-packages.update');
+            Route::delete('', [DeliveryPackageController::class, 'destroy'])->name('delivery-packages.destroy');
+            Route::post('deliver', [DeliveryPackageController::class, 'deliver'])->name('delivery-packages.deliver');
         });
     });
 

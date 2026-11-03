@@ -12,39 +12,26 @@ function login(string $email = 'ana@example.com', string $password = 'secret123'
     return test()->postJson('/api/auth/login', ['email' => $email, 'password' => $password]);
 }
 
-function cookieValue(TestResponse $response, string $name): ?string {
-    return $response->getCookie($name, decrypt: false)?->getValue();
-}
-
-function cookiesOf(TestResponse $response): array {
-    return [
-        'access_token' => cookieValue($response, 'access_token'),
-        'refresh_token' => cookieValue($response, 'refresh_token'),
-    ];
-}
-
 describe('POST /api/auth/login', function () {
-    it('signs in and sets both session cookies as httpOnly', function () {
+    it('signs in and returns the session tokens in the body', function () {
         $user = User::factory()->create(['name' => 'Ana', 'email' => 'ana@example.com']);
 
         $response = login('  ANA@example.com ');
 
         $response->assertOk()
-            ->assertJsonPath('data', ['user' => ['id' => $user->id, 'name' => 'Ana', 'email' => 'ana@example.com']])
+            ->assertJsonPath('data.user', ['id' => $user->id, 'name' => 'Ana', 'email' => 'ana@example.com'])
             ->assertJsonPath('message.pt-br', 'Login realizado com sucesso.');
 
-        foreach (['access_token', 'refresh_token'] as $name) {
-            $cookie = $response->getCookie($name, decrypt: false);
-
-            expect($cookie->isHttpOnly())->toBeTrue()
-                ->and($cookie->getSameSite())->toBe('lax')
-                ->and($cookie->getPath())->toBe('/');
-        }
+        expect(array_keys($response->json('data')))->toBe(['user', 'access_token', 'refresh_token', 'expires_in', 'refresh_expires_in'])
+            ->and($response->json('data.expires_in'))->toBeGreaterThan(14 * 60)->toBeLessThanOrEqual(15 * 60)
+            ->and($response->json('data.refresh_expires_in'))->toBeGreaterThan(29 * 86400)->toBeLessThanOrEqual(30 * 86400)
+            ->and($response->headers->getCookies())->toBeEmpty();
 
         // Só o hash vai para o banco — nunca o token cru.
-        $raw = cookieValue($response, 'access_token');
+        $raw = $response->json('data.access_token');
         expect(AccessToken::where('token_hash', hash_token($raw))->exists())->toBeTrue()
-            ->and(AccessToken::where('token_hash', $raw)->exists())->toBeFalse();
+            ->and(AccessToken::where('token_hash', $raw)->exists())->toBeFalse()
+            ->and(RefreshToken::where('token_hash', hash_token($response->json('data.refresh_token')))->exists())->toBeTrue();
     });
 
     it('rejects wrong credentials with the same message for unknown e-mails', function () {
@@ -53,12 +40,11 @@ describe('POST /api/auth/login', function () {
         $wrong_password = login('ana@example.com', 'nope');
         $unknown_email = login('ghost@example.com');
 
-        $wrong_password->assertUnauthorized();
+        $wrong_password->assertUnauthorized()->assertJsonPath('data', null);
         $unknown_email->assertUnauthorized();
 
         expect($wrong_password->json('message'))->toBe($unknown_email->json('message'))
-            ->and($wrong_password->json('message.pt-br'))->toBe('E-mail ou senha inválidos.')
-            ->and($wrong_password->headers->getCookies())->toBeEmpty();
+            ->and($wrong_password->json('message.pt-br'))->toBe('E-mail ou senha inválidos.');
     });
 
     it('validates the payload', function () {
@@ -70,24 +56,16 @@ describe('POST /api/auth/login', function () {
 });
 
 describe('GET /api/auth/me', function () {
-    it('returns null for anonymous visitors without triggering a refresh', function () {
-        $this->getJson('/api/auth/me')
-            ->assertOk()
-            ->assertJsonPath('data', ['user' => null]);
-    });
-
-    it('returns 401 when only the refresh token is left (client should refresh)', function () {
-        $this->withUnencryptedCookies(['refresh_token' => 'whatever'])
-            ->getJson('/api/auth/me')
-            ->assertUnauthorized();
+    it('requires an access token', function () {
+        $this->getJson('/api/auth/me')->assertUnauthorized()->assertJsonPath('data', null);
     });
 
     it('returns the logged user', function () {
         User::factory()->create(['name' => 'Ana', 'email' => 'ana@example.com']);
-        $cookies = cookiesOf(login());
 
-        $this->withUnencryptedCookies($cookies)
+        $this->withToken(login()->json('data.access_token'))
             ->getJson('/api/auth/me')
+            ->assertOk()
             ->assertJsonPath('data.user.name', 'Ana')
             ->assertJsonPath('data.user.email', 'ana@example.com');
     });
@@ -104,16 +82,24 @@ describe('protected API routes', function () {
             ]);
     })->with(['/api/units', '/api/item-categories', '/api/storages', '/api/inventory-items']);
 
-    it('rejects an expired access token', function () {
+    it('rejects an unknown or expired access token', function () {
         User::factory()->create(['email' => 'ana@example.com']);
-        $cookies = cookiesOf(login());
-        AccessToken::query()->update(['expires_at' => now()->subSecond()]);
+        $token = login()->json('data.access_token');
 
-        $this->withUnencryptedCookies($cookies)->getJson('/api/units')->assertUnauthorized();
+        $this->withToken('not-a-token')->getJson('/api/units')->assertUnauthorized();
+
+        AccessToken::query()->update(['expires_at' => now()->subSecond()]);
+        $this->withToken($token)->getJson('/api/units')->assertUnauthorized();
+    });
+
+    it('ignores a token sent as a cookie', function () {
+        $this->withUnencryptedCookies(['access_token' => accessToken()])
+            ->getJson('/api/units')
+            ->assertUnauthorized();
     });
 
     it('answers unknown routes with 404 in the API envelope', function () {
-        $this->withUnencryptedCookies(sessionCookies())
+        $this->withToken(accessToken())
             ->getJson('/api/does-not-exist')
             ->assertNotFound()
             ->assertJsonPath('success', false)
@@ -124,35 +110,40 @@ describe('protected API routes', function () {
 describe('POST /api/auth/token/refresh', function () {
     it('rotates the refresh token and issues a new access token', function () {
         User::factory()->create(['email' => 'ana@example.com']);
-        $first = cookiesOf(login());
+        $first = login()->json('data');
 
-        $refreshed = $this->withUnencryptedCookies($first)->postJson('/api/auth/token/refresh');
+        $refreshed = $this->postJson('/api/auth/token/refresh', ['refresh_token' => $first['refresh_token']]);
 
-        $refreshed->assertOk();
-        expect(cookieValue($refreshed, 'refresh_token'))->not->toBe($first['refresh_token'])
-            ->and(cookieValue($refreshed, 'access_token'))->not->toBe($first['access_token'])
+        $refreshed->assertOk()->assertJsonPath('data.user.email', 'ana@example.com');
+        expect($refreshed->json('data.refresh_token'))->not->toBe($first['refresh_token'])
+            ->and($refreshed->json('data.access_token'))->not->toBe($first['access_token'])
+            ->and($refreshed->json('data.expires_in'))->toBeGreaterThan(0)
             ->and(RefreshToken::byToken($first['refresh_token'])->first()->revoked)->toBeTrue();
+
+        $this->withToken($refreshed->json('data.access_token'))->getJson('/api/units')->assertOk();
     });
 
-    it('clears the cookies when there is no valid refresh token', function () {
-        $response = $this->withUnencryptedCookies(['refresh_token' => 'invalid'])->postJson('/api/auth/token/refresh');
+    it('answers 401 for an invalid refresh token', function () {
+        $this->postJson('/api/auth/token/refresh', ['refresh_token' => 'invalid'])
+            ->assertUnauthorized()
+            ->assertJsonPath('data', null);
+    });
 
-        $response->assertUnauthorized();
-
-        foreach (['access_token', 'refresh_token'] as $name) {
-            expect($response->getCookie($name, decrypt: false)->isCleared())->toBeTrue();
-        }
+    it('validates the payload', function () {
+        $this->postJson('/api/auth/token/refresh')
+            ->assertUnprocessable()
+            ->assertJsonPath('message.en-us', 'Invalid data.');
     });
 
     it('gives concurrent refreshes with the same token the same new session', function () {
         $user = User::factory()->create();
         $token = app(CreateRefreshTokenAction::class)->handle($user->id)->token;
 
-        $a = app(RefreshSessionAction::class)->handle($token);
-        $b = app(RefreshSessionAction::class)->handle($token);
+        $a = $this->postJson('/api/auth/token/refresh', ['refresh_token' => $token])->assertOk()->json('data');
+        $b = $this->postJson('/api/auth/token/refresh', ['refresh_token' => $token])->assertOk()->json('data');
 
-        expect($a->refresh_token->token)->toBe($b->refresh_token->token)
-            ->and($a->access_token->token)->toBe($b->access_token->token)
+        expect($a['refresh_token'])->toBe($b['refresh_token'])
+            ->and($a['access_token'])->toBe($b['access_token'])
             ->and(RefreshToken::where('revoked', false)->count())->toBe(1);
     });
 
@@ -176,22 +167,31 @@ describe('POST /api/auth/token/refresh', function () {
         $token = app(CreateRefreshTokenAction::class)->handle($user->id)->token;
         RefreshToken::query()->update(['expires_at' => now()->subSecond()]);
 
-        expect(app(RotateRefreshTokenAction::class)->handle($token))->toBeNull();
+        expect(app(RefreshSessionAction::class)->handle($token))->toBeNull();
     });
 });
 
 describe('POST /api/auth/logout', function () {
-    it('revokes both tokens and clears the cookies', function () {
+    it('revokes the access token (header) and the refresh token (body)', function () {
         User::factory()->create(['email' => 'ana@example.com']);
-        $cookies = cookiesOf(login());
+        $session = login()->json('data');
 
-        $logout = $this->withUnencryptedCookies($cookies)->postJson('/api/auth/logout');
+        $this->withToken($session['access_token'])
+            ->postJson('/api/auth/logout', ['refresh_token' => $session['refresh_token']])
+            ->assertOk()
+            ->assertJsonPath('message.pt-br', 'Sessão encerrada.')
+            ->assertJsonPath('data', null);
 
-        $logout->assertOk()->assertJsonPath('message.pt-br', 'Sessão encerrada.');
-        expect($logout->getCookie('access_token', decrypt: false)->isCleared())->toBeTrue()
-            ->and($logout->getCookie('refresh_token', decrypt: false)->isCleared())->toBeTrue();
+        $this->withToken($session['access_token'])->getJson('/api/units')->assertUnauthorized();
+        $this->postJson('/api/auth/token/refresh', ['refresh_token' => $session['refresh_token']])->assertUnauthorized();
+    });
 
-        $this->withUnencryptedCookies($cookies)->getJson('/api/units')->assertUnauthorized();
-        $this->withUnencryptedCookies($cookies)->postJson('/api/auth/token/refresh')->assertUnauthorized();
+    it('still revokes the refresh token when the access token is already gone', function () {
+        User::factory()->create(['email' => 'ana@example.com']);
+        $session = login()->json('data');
+
+        $this->postJson('/api/auth/logout', ['refresh_token' => $session['refresh_token']])->assertOk();
+
+        $this->postJson('/api/auth/token/refresh', ['refresh_token' => $session['refresh_token']])->assertUnauthorized();
     });
 });

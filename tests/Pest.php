@@ -1,7 +1,6 @@
 <?php
 
 use App\Actions\Auth\CreateAccessTokenAction;
-use App\Actions\Auth\CreateRefreshTokenAction;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -31,18 +30,15 @@ pest()->extend(TestCase::class)
 */
 
 /**
- * Cookies de uma sessão válida (access + refresh) para o usuário informado ou um novo.
+ * Access token válido (para `withToken`) do usuário informado ou de um novo.
  *
  * @param User|null $user
- * @return array{access_token: string, refresh_token: string}
+ * @return string
  */
-function sessionCookies(?User $user = null): array {
+function accessToken(?User $user = null): string {
     $user ??= User::factory()->create();
 
-    return [
-        'access_token' => app(CreateAccessTokenAction::class)->handle($user->id)->token,
-        'refresh_token' => app(CreateRefreshTokenAction::class)->handle($user->id)->token,
-    ];
+    return app(CreateAccessTokenAction::class)->handle($user->id)->token;
 }
 
 /**

@@ -1,6 +1,6 @@
 # White Label Stock API — instruções para agentes
 
-API REST do White Label Inventory System em **Laravel 13** (PHP 8.5) + PostgreSQL 16. O front (Angular) é o projeto irmão `../white-label-inventory-system`, que faz proxy de `/api/**` para cá — **o contrato JSON é consumido por ele sem adaptação**: não mude formato, nomes ou status sem alinhar o front.
+API REST do White Label Stock em **Laravel 13** (PHP 8.5) + PostgreSQL 16. O web (Angular) é o projeto irmão `../white-label-stock-web`, que faz proxy de `/api/**` para cá — **o contrato JSON é consumido por ele sem adaptação**: não mude formato, nomes ou status sem alinhar o web.
 
 PHP/Composer só existem nos containers: rode tudo com `make` (ou `docker compose -f docker-compose.local.yml exec php-fpm …`).
 
@@ -33,13 +33,13 @@ routes/api.php → Controller → FormRequest → DTO → Action → Model (Eloq
 
 ## Sessão
 
-- Tokens opacos (`generate_opaque_token`) em cookies httpOnly (`AuthCookies`), só o `hash_token` no banco. Nunca devolva token no corpo.
-- Rota protegida: dentro de `Route::middleware('auth')` em `routes/api.php` (`AuthenticateMiddleware` lê o cookie `access_token`).
+- Tokens opacos (`generate_opaque_token`), só o `hash_token` no banco. Login e refresh devolvem a sessão no corpo (`SessionResource`: `user`, `access_token`, `refresh_token`, `expires_in`, `refresh_expires_in`). A API não lê nem grava cookies.
+- Rota protegida: dentro de `Route::middleware('auth')` em `routes/api.php` (`AuthenticateMiddleware` lê `Authorization: Bearer` via `$request->bearerToken()`). Refresh (`refresh_token` no corpo) e logout (Bearer + `refresh_token` opcional no corpo) ficam fora do `auth`.
 - Refresh rotaciona com detecção de reuso (`RotateRefreshTokenAction`) e dedupe por 10 s (`RefreshSessionAction`, lock no cache). Não remova o dedupe: o SSR do web e o browser refrescam ao mesmo tempo.
 
 ## Testes (Pest)
 
-- `tests/Feature/**` contra o Postgres `${DB_DATABASE}_testing` com `RefreshDatabase`; `TestCase` já liga `withCredentials()` (cookies em `getJson`).
-- Sessão: `$this->withUnencryptedCookies(sessionCookies())`.
+- `tests/Feature/**` contra o Postgres `${DB_DATABASE}_testing` com `RefreshDatabase`; .
+- Sessão: `$this->withToken(accessToken())` (`accessToken()` em `tests/Pest.php`).
 - Falha de banco: `failTable('tabela')` (em `tests/Pest.php`; renomeia a tabela dentro da transação do teste) e confira a mensagem `…_error`. Actions são `final` e não dá para mockar — não tire o `final` para isso.
 - Todo endpoint/regra nova com teste. Rodar: `make test`.

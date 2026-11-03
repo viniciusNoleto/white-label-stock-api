@@ -19,9 +19,6 @@ return Application::configure(basePath: dirname(__DIR__))
             'auth' => AuthenticateMiddleware::class,
         ]);
 
-        // Os cookies de sessão são opacos e httpOnly: não passam pela criptografia de cookies do Laravel.
-        $middleware->encryptCookies(except: ['access_token', 'refresh_token']);
-
         // Atrás do nginx (e do proxy do web): respeita X-Forwarded-For/Proto.
         $middleware->trustProxies(at: '*');
 

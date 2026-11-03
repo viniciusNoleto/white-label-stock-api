@@ -13,7 +13,7 @@ if (!function_exists('generate_opaque_token')) {
 
 if (!function_exists('hash_token')) {
     /**
-     * Só o sha256 do token é persistido; o valor cru vai apenas no cookie httpOnly.
+     * Só o sha256 do token é persistido; o valor cru só existe na resposta do login/refresh.
      *
      * @param string $token
      * @return string

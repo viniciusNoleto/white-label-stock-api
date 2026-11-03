@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 
 beforeEach(function () {
-    $this->withUnencryptedCookies(sessionCookies());
+    $this->withToken(accessToken());
 });
 
 function listItems(string $query = ''): TestResponse {
@@ -39,11 +39,12 @@ describe('GET /api/inventory-items', function () {
         [$first, $second] = $response->json('data.items');
 
         expect($response->json('data.meta.total'))->toBe(2)
-            ->and(array_keys($first))->toBe(['id', 'name', 'quantity', 'created_at', 'updated_at', 'unit', 'storage', 'categories', 'components'])
+            ->and(array_keys($first))->toBe(['id', 'name', 'quantity', 'packaged_quantity', 'created_at', 'updated_at', 'unit', 'storage', 'categories', 'components'])
             ->and($first)->toMatchArray([
                 'id' => $chair->id,
                 'name' => 'Cadeira',
                 'quantity' => '2.0000',
+                'packaged_quantity' => '0.0000',
                 'unit' => ['id' => $unit->id, 'name' => 'Unidade', 'abbreviation' => 'un'],
                 'storage' => ['id' => $storage->id, 'name' => 'Depósito'],
                 'categories' => [['id' => $category->id, 'name' => 'Móveis', 'color_hex' => '#ff0000']],
@@ -203,7 +204,50 @@ describe('PATCH /api/inventory-items/{inventory_item_id}', function () {
         [['quantity' => -1]],
         [['quantity' => 'x']],
         [['quantity_add' => 'x']],
+        [['quantity_add' => 0]],
+        [['quantity_add' => -2]],
+        [['quantity_subtract' => 0]],
+        [['quantity_subtract' => -2]],
     ]);
+
+    it('subtracts the whole stock down to zero', function () {
+        $item = seedItem('2.5');
+
+        $this->patchJson("/api/inventory-items/{$item->id}", ['quantity_subtract' => 2.5])
+            ->assertOk()
+            ->assertJsonPath('data.quantity', '0.0000');
+    });
+
+    it('rejects subtracting more than the stock and keeps the quantity', function () {
+        $item = seedItem('3');
+
+        $this->patchJson("/api/inventory-items/{$item->id}", ['quantity_subtract' => 4.5])
+            ->assertUnprocessable()
+            ->assertJsonPath('data', null)
+            ->assertJsonPath('message.pt-br', 'Estoque insuficiente de "Cabo". Necessário: 4.5, Disponível: 3.');
+
+        expect($item->fresh()->quantity)->toBe('3.0000');
+    });
+
+    it('rejects more than one quantity mode at once', function (array $payload) {
+        $item = seedItem();
+
+        $this->patchJson("/api/inventory-items/{$item->id}", $payload)
+            ->assertUnprocessable()
+            ->assertJsonPath('message.en-us', 'Send only one quantity mode: set, add or subtract.');
+
+        expect($item->fresh()->quantity)->toBe('10.0000');
+    })->with([
+        [['quantity' => 1, 'quantity_add' => 2]],
+        [['quantity_add' => 1, 'quantity_subtract' => 2]],
+        [['quantity' => 1, 'quantity_subtract' => 2]],
+    ]);
+
+    it('returns 404 when subtracting from an unknown item', function () {
+        $this->patchJson('/api/inventory-items/404', ['quantity_subtract' => 1])
+            ->assertNotFound()
+            ->assertJsonPath('message.pt-br', 'Item não encontrado.');
+    });
 
     it('renames an item trimming whitespace', function () {
         $item = seedItem();
@@ -231,6 +275,70 @@ describe('PATCH /api/inventory-items/{inventory_item_id}', function () {
 
         $this->patchJson("/api/inventory-items/{$item->id}", ['storage_id' => null])
             ->assertJsonPath('data.storage_id', null);
+    });
+
+    it('edits name, unit and categories together', function () {
+        $item = seedItem();
+        $unit = Unit::factory()->create();
+        [$keep, $drop, $add] = ItemCategory::factory()->count(3)->create();
+        $item->categories()->attach([$keep->id, $drop->id], ['created_at' => '2026-01-01 00:00:00']);
+
+        $this->patchJson("/api/inventory-items/{$item->id}", [
+            'name' => 'Cabo novo',
+            'unit_id' => $unit->id,
+            'category_ids' => [$keep->id, $add->id, $add->id],
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.name', 'Cabo novo')
+            ->assertJsonPath('data.unit_id', $unit->id)
+            ->assertJsonPath('data.quantity', '10.0000')
+            ->assertJsonPath('message.pt-br', 'Item atualizado com sucesso.');
+
+        $pivot = DB::table('inventory_item_has_category')->where('inventory_item_id', $item->id)->orderBy('item_category_id')->get();
+
+        expect($pivot->pluck('item_category_id')->all())->toBe([$keep->id, $add->id])
+            ->and($pivot->firstWhere('item_category_id', $keep->id)->created_at)->toBe('2026-01-01 00:00:00')
+            ->and($pivot->firstWhere('item_category_id', $add->id)->created_at)->not->toBeNull();
+    });
+
+    it('clears all categories with an empty list', function () {
+        $item = seedItem();
+        $item->categories()->attach(ItemCategory::factory()->create()->id);
+
+        $this->patchJson("/api/inventory-items/{$item->id}", ['category_ids' => []])
+            ->assertOk()
+            ->assertJsonPath('message.en-us', 'Item updated successfully.');
+
+        expect($item->categories()->count())->toBe(0);
+    });
+
+    it('rejects an invalid unit or category list', function (array $payload, string $message) {
+        $item = seedItem();
+
+        $this->patchJson("/api/inventory-items/{$item->id}", $payload)
+            ->assertUnprocessable()
+            ->assertJsonPath('message.en-us', $message);
+    })->with([
+        [['unit_id' => null], 'Unit is required.'],
+        [['unit_id' => 'x'], 'Unit is required.'],
+        [['category_ids' => 'x'], 'Invalid categories.'],
+    ]);
+
+    it('rolls back everything when a category does not exist', function () {
+        $item = seedItem();
+        $unit = Unit::factory()->create();
+
+        $this->patchJson("/api/inventory-items/{$item->id}", ['name' => 'Outro', 'unit_id' => $unit->id, 'category_ids' => [999]])
+            ->assertUnprocessable()
+            ->assertJsonPath('message.en-us', 'The given unit, storage, category or component does not exist.');
+
+        expect($item->fresh()->only('name', 'unit_id'))->toBe(['name' => 'Cabo', 'unit_id' => $item->unit_id]);
+    });
+
+    it('returns 422 for a unit that does not exist', function () {
+        $item = seedItem();
+
+        $this->patchJson("/api/inventory-items/{$item->id}", ['unit_id' => 999])->assertUnprocessable();
     });
 
     it('returns 422 for a storage that does not exist', function () {

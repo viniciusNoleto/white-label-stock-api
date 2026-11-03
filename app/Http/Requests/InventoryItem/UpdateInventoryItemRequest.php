@@ -15,9 +15,11 @@ class UpdateInventoryItemRequest extends BaseRequest {
     public function rules(): array {
         return [
             'quantity' => 'nullable|numeric|min:0',
-            'quantity_add' => 'nullable|numeric',
-            'quantity_subtract' => 'nullable|numeric',
+            'quantity_add' => 'nullable|numeric|gt:0',
+            'quantity_subtract' => 'nullable|numeric|gt:0',
             'name' => 'sometimes|required|string|max:255',
+            'unit_id' => 'sometimes|required|integer|min:1',
+            'category_ids' => 'sometimes|present|array',
             'storage_id' => 'nullable',
         ];
     }
@@ -31,20 +33,30 @@ class UpdateInventoryItemRequest extends BaseRequest {
             'quantity_add.*' => 'messages.inventory_items.invalid_quantity',
             'quantity_subtract.*' => 'messages.inventory_items.invalid_quantity',
             'name.*' => 'messages.inventory_items.name_required',
+            'unit_id.*' => 'messages.inventory_items.unit_required',
+            'category_ids.*' => 'messages.inventory_items.invalid_categories',
         ];
     }
 
     /**
-     * Payload sem nenhum campo atualizável (`storage_id: null` conta: desvincula o armazenamento).
+     * Payload sem nenhum campo atualizável (`storage_id: null` conta: desvincula o armazenamento;
+     * `category_ids: []` conta: remove todas as categorias)
+     * ou com mais de um modo de quantidade (definir, somar e subtrair são exclusivos).
      *
      * @return array<int, callable>
      */
     public function after(): array {
         return [
             function (Validator $validator) {
-                $has_quantity = collect(self::QUANTITY_FIELDS)->contains(fn($field) => $this->input($field) !== null);
+                if ($validator->errors()->isNotEmpty()) {
+                    return;
+                }
 
-                if (!$has_quantity && !$this->has('name') && !$this->has('storage_id')) {
+                $quantity_fields = collect(self::QUANTITY_FIELDS)->filter(fn($field) => $this->input($field) !== null)->count();
+
+                if ($quantity_fields > 1) {
+                    $validator->errors()->add('payload', 'messages.inventory_items.single_quantity_mode');
+                } elseif (!$quantity_fields && !$this->hasAny(['name', 'unit_id', 'category_ids', 'storage_id'])) {
                     $validator->errors()->add('payload', 'messages.inventory_items.no_fields');
                 }
             },

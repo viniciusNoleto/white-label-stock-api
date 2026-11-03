@@ -69,7 +69,7 @@ class InventoryItemController extends BaseController {
     }
 
     /**
-     * Atualização parcial: quantidade (absoluta, soma ou subtração), nome e/ou armazenamento.
+     * Atualização parcial: quantidade (absoluta, soma ou subtração), nome, unidade, categorias e/ou armazenamento.
      *
      * @param UpdateInventoryItemRequest $request
      * @param UpdateInventoryItemAction $action
@@ -117,10 +117,15 @@ class InventoryItemController extends BaseController {
      * @return string
      */
     private function updateMessage(UpdateInventoryItemDTO $dto): string {
+        if ($dto->changedFieldsCount() > 1) {
+            return 'messages.inventory_items.updated';
+        }
+
         return match (true) {
             $dto->changesName() => 'messages.inventory_items.name_updated',
             $dto->has_storage_id => 'messages.inventory_items.storage_updated',
-            default => 'messages.inventory_items.quantity_updated',
+            $dto->changesQuantity() => 'messages.inventory_items.quantity_updated',
+            default => 'messages.inventory_items.updated',
         };
     }
 }
