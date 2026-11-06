@@ -85,12 +85,6 @@ test: ## Roda os testes (Pest). Ex.: make test TEST="--filter=units"
 	@$(PHP) php artisan config:clear --ansi
 	@$(PHP) ./vendor/bin/pest $(TEST)
 
-certbot-run: ## Solicita a primeira instalação do certificado digital utilizando certbot
-	@$(COMPOSE) exec nginx certbot run --nginx --agree-tos --no-eff-email -m ${CERTBOT_EMAIL_ADDRESS} -d ${CERTBOT_DOMAIN}
-
-certbot-renew: ## Solicita a renovação do certificado digital utilizando certbot
-	@$(COMPOSE) exec nginx certbot renew
-
 cache: ## Realiza a criação de cache
 	@$(PHP) php artisan config:cache
 	@$(PHP) php artisan route:cache

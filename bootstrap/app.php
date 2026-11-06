@@ -2,6 +2,7 @@
 
 use App\Base\Traits\Response as ResponseTrait;
 use App\Http\Middleware\AuthenticateMiddleware;
+use App\Http\Middleware\EnsureAdminMiddleware;
 use App\Http\Middleware\ForceJsonMiddleware;
 use App\Http\Middleware\RejectMalformedJsonMiddleware;
 use Illuminate\Foundation\Application;
@@ -17,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'auth' => AuthenticateMiddleware::class,
+            'admin' => EnsureAdminMiddleware::class,
         ]);
 
         // Atrás do nginx (e do proxy do web): respeita X-Forwarded-For/Proto.

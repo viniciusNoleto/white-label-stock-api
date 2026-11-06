@@ -1,6 +1,6 @@
 # White Label Stock API
 
-REST API of the [White Label Stock](../white-label-stock-web): units, item categories, storages, inventory items (with recipes/components and builds) and Bearer token sessions. Built with **Laravel 13** (PHP 8.5) and **PostgreSQL 16**.
+REST API of the [White Label Stock](../white-label-stock-web): units, item categories, storages, inventory items (with recipes/components and builds), delivery packages, users with admin-approved registration and Bearer token sessions. Built with **Laravel 13** (PHP 8.5) and **PostgreSQL 16**.
 
 The web app (Angular SSR) is a separate project. Its Express server proxies `/api/**` to this API (forwarding the `Authorization` header), so the browser only ever talks to the web origin. Any other client (ApiDog, Postman, curl) can call the API directly with `Authorization: Bearer <access_token>`.
 
@@ -19,13 +19,14 @@ Every response uses the same envelope; `message` is always translated into the t
 { "success": true, "message": { "pt-br": "…", "es-mx": "…", "en-us": "…" }, "data": {} }
 ```
 
-Errors always carry `data: null`: 400 malformed JSON · 401 no session · 404 not found (including invalid ids) · 409 record in use · 422 invalid payload or business rule (e.g. insufficient stock) · 500 unexpected.
+Errors always carry `data: null`: 400 malformed JSON · 401 no session · 403 forbidden (admin-only route, or signing in while the registration is still pending) · 404 not found (including invalid ids) · 409 record in use · 422 invalid payload or business rule (e.g. insufficient stock) · 500 unexpected.
 
 ## Endpoints
 
 | Method | Path | |
 |---|---|---|
 | `POST` | `/api/auth/login` | `{ email, password }` → session (see below) |
+| `POST` | `/api/auth/register` | public `{ name, email, password }` → creates a **registration request** (409 if the email is taken); an admin approves or rejects it |
 | `POST` | `/api/auth/logout` | revokes the Bearer access token and the `refresh_token` sent in the body |
 | `GET` | `/api/auth/me` | `{ user }` of the Bearer access token (401 without a valid one) |
 | `POST` | `/api/auth/token/refresh` | `{ refresh_token }` → new session (rotates the refresh token) |
@@ -42,16 +43,21 @@ Errors always carry `data: null`: 400 malformed JSON · 401 no session · 404 no
 | `GET` `POST` | `/api/delivery-packages` | `?status=pending\|delivered&page=&per_page=` → `{ items, meta }` / create `{ items: [{ id, quantity }], notes }` (only free stock: quantity − already packaged → 422) |
 | `GET` `PUT` `DELETE` | `/api/delivery-packages/{id}` | show / replace `items` + `notes` (pending only) / delete (stock untouched) |
 | `POST` | `/api/delivery-packages/{id}/deliver` | marks as delivered and subtracts the items from the stock (422 if delivered or short) |
+| `GET` | `/api/registration-requests` | **admin** · `?search=&page=&per_page=` → pending requests, oldest first |
+| `POST` | `/api/registration-requests/{id}/approve` | **admin** · creates a regular user with the requested password and deletes the request |
+| `DELETE` | `/api/registration-requests/{id}` | **admin** · rejects (deletes) the request |
+| `GET` | `/api/users` | **admin** · `?search=&page=&per_page=` → admins first, then by name |
+| `DELETE` | `/api/users/{id}` | **admin** · deletes a regular user and their sessions (admins → 422) |
 | `GET` | `/up` | health check |
 
-Everything except `/api/auth/login`, `/api/auth/logout`, `/api/auth/token/refresh` and `/up` requires `Authorization: Bearer <access_token>`.
+Everything except `/api/auth/login`, `/api/auth/register`, `/api/auth/logout`, `/api/auth/token/refresh` and `/up` requires `Authorization: Bearer <access_token>`.
 
 ## Authentication
 
 Login and refresh return the session in the body:
 
 ```json
-{ "user": { "id": 1, "name": "…", "email": "…" }, "access_token": "…", "refresh_token": "…", "expires_in": 900, "refresh_expires_in": 2592000 }
+{ "user": { "id": 1, "name": "…", "email": "…", "is_admin": true }, "access_token": "…", "refresh_token": "…", "expires_in": 900, "refresh_expires_in": 2592000 }
 ```
 
 Opaque tokens (32 random bytes, not JWT); only their SHA-256 hash is persisted. The access token goes in `Authorization: Bearer`; the refresh token only in the body of `/api/auth/token/refresh` and `/api/auth/logout`. `expires_in` / `refresh_expires_in` are seconds until each token expires. Access tokens last 15 minutes, refresh tokens 30 days. Every refresh **rotates** the token inside its family; presenting an already rotated token revokes the whole family. Concurrent refreshes with the same token within 10 s (several tabs, SSR + browser) get the same new pair — the lock and the encrypted result live in the cache, shared by all php-fpm workers.
@@ -81,9 +87,12 @@ make install
 
 ## Deploy
 
-1. `.env`: `APP_ENV=production`, `APP_DEBUG=false`, `DOCKER_COMPOSE_FILE=docker-compose.production.yml`, strong `DB_PASSWORD`, `NGINX_PORT`. The web app must reach the API at its `API_URL`.
+The server runs **Nginx Proxy Manager** (NPM), which routes each domain to its app and handles HTTPS. `docker-compose.production.yml` (homolog and production) publishes no port: the API's nginx joins NPM's Docker network, where the web container (on the same network) reaches it. The API does not need a public domain — the browser only talks to the web app, which proxies `/api/**`.
+
+1. `.env`: `APP_ENV=production`, `APP_DEBUG=false`, `DOCKER_COMPOSE_FILE=docker-compose.production.yml`, strong `DB_PASSWORD`, `PROXY_NETWORK` = NPM's network name (`docker network ls`; default `nginx-proxy-manager`).
 2. `make build && make install` the first time, `make deploy` for updates.
-3. Optional TLS on the API itself: set `server_name` in `.docker/nginx/conf.d/api.conf`, `CERTBOT_*` in `.env`, then `make certbot-run`.
+3. In the web's `.env`: `API_URL=http://white-label-stock-api-nginx`.
+4. Optional — public API domain: in NPM add a Proxy Host → `http`, `white-label-stock-api-nginx`, port `80`, with a Let's Encrypt certificate.
 
 ## License
 

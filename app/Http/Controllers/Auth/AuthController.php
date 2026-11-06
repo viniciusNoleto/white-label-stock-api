@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Auth;
 use App\Actions\Auth\LoginAction;
 use App\Actions\Auth\LogoutAction;
 use App\Actions\Auth\RefreshSessionAction;
+use App\Actions\Auth\RegistrationRequest\CreateRegistrationRequestAction;
 use App\Base\Http\Controllers\BaseController;
 use App\Data\Auth\LoginDTO;
+use App\Data\Auth\RegisterDTO;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\LogoutRequest;
 use App\Http\Requests\Auth\RefreshTokenRequest;
+use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\Auth\AuthUserResource;
 use App\Http\Resources\Auth\SessionResource;
 use Exception;
@@ -36,6 +39,23 @@ class AuthController extends BaseController {
             );
         } catch (Exception $exception) {
             return self::returnError($exception);
+        }
+    }
+
+    /**
+     * Cadastro público: não cria a conta, só o pedido — um admin aprova (vira usuário) ou recusa.
+     *
+     * @param RegisterRequest $request
+     * @param CreateRegistrationRequestAction $action
+     * @return JsonResponse|Response
+     */
+    public function register(RegisterRequest $request, CreateRegistrationRequestAction $action) {
+        try {
+            $action->handle(RegisterDTO::fromRequest($request));
+
+            return self::successResponse(message: 'messages.registration_requests.created', status_code: 201);
+        } catch (Exception $exception) {
+            return self::returnError($exception, 'messages.registration_requests.create_error');
         }
     }
 

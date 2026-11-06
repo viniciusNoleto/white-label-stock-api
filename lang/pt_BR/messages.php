@@ -3,6 +3,7 @@
 return [
     'success' => 'Operação realizada com sucesso.',
     'unauthorized' => 'Você precisa entrar para continuar.',
+    'forbidden' => 'Você não tem permissão para acessar este recurso.',
     'not_found' => 'Registro não encontrado.',
     'server_error' => 'Erro inesperado. Tente novamente.',
     'invalid_payload' => 'Dados inválidos.',
@@ -11,6 +12,7 @@ return [
         'invalid_credentials' => 'E-mail ou senha inválidos.',
         'logged_in' => 'Login realizado com sucesso.',
         'logged_out' => 'Sessão encerrada.',
+        'pending_approval' => 'Seu cadastro ainda aguarda a aprovação de um administrador.',
     ],
 
     'units' => [
@@ -96,5 +98,30 @@ return [
         'update_error' => 'Erro ao atualizar pacote.',
         'delete_error' => 'Erro ao excluir pacote.',
         'deliver_error' => 'Erro ao entregar pacote.',
+    ],
+
+    'registration_requests' => [
+        'not_found' => 'Pedido de cadastro não encontrado.',
+        'required_fields' => 'Nome, e-mail e senha são obrigatórios.',
+        'name_too_long' => 'O nome deve ter no máximo 150 caracteres.',
+        'invalid_email' => 'E-mail inválido.',
+        'password_too_short' => 'A senha deve ter pelo menos 8 caracteres.',
+        'password_too_long' => 'A senha deve ter no máximo 255 caracteres.',
+        'email_taken' => 'Já existe um usuário ou pedido de cadastro com este e-mail.',
+        'created' => 'Pedido de cadastro enviado. Aguarde a aprovação de um administrador.',
+        'approved' => 'Cadastro aprovado. O usuário já pode entrar.',
+        'rejected' => 'Pedido de cadastro recusado e excluído.',
+        'fetch_error' => 'Erro ao buscar pedidos de cadastro.',
+        'create_error' => 'Erro ao enviar o pedido de cadastro.',
+        'approve_error' => 'Erro ao aprovar o pedido de cadastro.',
+        'reject_error' => 'Erro ao recusar o pedido de cadastro.',
+    ],
+
+    'users' => [
+        'not_found' => 'Usuário não encontrado.',
+        'cannot_delete_admin' => 'Administradores não podem ser excluídos.',
+        'deleted' => 'Usuário excluído. O acesso dele foi encerrado.',
+        'fetch_error' => 'Erro ao buscar usuários.',
+        'delete_error' => 'Erro ao excluir usuário.',
     ],
 ];

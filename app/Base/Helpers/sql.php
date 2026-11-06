@@ -13,3 +13,15 @@ if (!function_exists('is_foreign_key_violation')) {
         return $exception instanceof QueryException && (string)$exception->getCode() === '23503';
     }
 }
+
+if (!function_exists('is_unique_violation')) {
+    /**
+     * SQLSTATE 23505: valor duplicado num índice único.
+     *
+     * @param Throwable $exception
+     * @return bool
+     */
+    function is_unique_violation(Throwable $exception): bool {
+        return $exception instanceof QueryException && (string)$exception->getCode() === '23505';
+    }
+}

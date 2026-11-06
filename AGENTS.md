@@ -28,13 +28,16 @@ routes/api.php → Controller → FormRequest → DTO → Action → Model (Eloq
 
 - Envelope sempre `{ success, message, data }`; `message` = `api_message($key)` → `{ "pt-br", "es-mx", "en-us" }`. Mensagem nova entra nos **três** arquivos `lang/{pt_BR,es_MX,en}/messages.php`.
 - Erros sempre com `data: null`. Erro de regra de negócio: `throw new ApiException('messages.x.y', $status, $replace)`.
-- Status: 400 JSON malformado · 401 sem sessão · 404 não encontrado · 409 em uso · 422 validação/regra · 500 inesperado (a mensagem específica vem do `returnError($e, 'messages.…_error')`).
+- Status: 400 JSON malformado · 401 sem sessão · 403 sem permissão (rota de admin para usuário comum; login de cadastro ainda pendente) · 404 não encontrado · 409 em uso · 422 validação/regra · 500 inesperado (a mensagem específica vem do `returnError($e, 'messages.…_error')`).
 - JSON sempre snake_case; ids `number`.
 
 ## Sessão
 
 - Tokens opacos (`generate_opaque_token`), só o `hash_token` no banco. Login e refresh devolvem a sessão no corpo (`SessionResource`: `user`, `access_token`, `refresh_token`, `expires_in`, `refresh_expires_in`). A API não lê nem grava cookies.
 - Rota protegida: dentro de `Route::middleware('auth')` em `routes/api.php` (`AuthenticateMiddleware` lê `Authorization: Bearer` via `$request->bearerToken()`). Refresh (`refresh_token` no corpo) e logout (Bearer + `refresh_token` opcional no corpo) ficam fora do `auth`.
+- Administração: `users.is_admin`. Rotas só de admin ficam no grupo `Route::middleware('admin')` (dentro do `auth`; `EnsureAdminMiddleware` → 403 `messages.forbidden`). O admin inicial vem do seeder (`SEED_ADMIN_*`).
+- Cadastro público: `POST /api/auth/register` cria um `registration_requests` (senha já com hash), não um usuário. Admin aprova (`POST /api/registration-requests/{id}/approve` → cria o `User` comum com a mesma senha e exclui o pedido) ou recusa (`DELETE /api/registration-requests/{id}` → exclui o pedido). Login com o pedido ainda pendente (senha certa) → 403 `messages.auth.pending_approval`.
+- Usuários: `GET /api/users`, `DELETE /api/users/{id}` (admin nunca é excluído → 422; os tokens saem em cascata, o acesso acaba na hora).
 - Refresh rotaciona com detecção de reuso (`RotateRefreshTokenAction`) e dedupe por 10 s (`RefreshSessionAction`, lock no cache). Não remova o dedupe: o SSR do web e o browser refrescam ao mesmo tempo.
 
 ## Testes (Pest)

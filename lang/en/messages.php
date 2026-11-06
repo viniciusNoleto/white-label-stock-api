@@ -3,6 +3,7 @@
 return [
     'success' => 'Operation completed successfully.',
     'unauthorized' => 'You need to sign in to continue.',
+    'forbidden' => 'You don\'t have permission to access this resource.',
     'not_found' => 'Record not found.',
     'server_error' => 'Unexpected error. Please try again.',
     'invalid_payload' => 'Invalid data.',
@@ -11,6 +12,7 @@ return [
         'invalid_credentials' => 'Invalid email or password.',
         'logged_in' => 'Signed in successfully.',
         'logged_out' => 'Signed out.',
+        'pending_approval' => 'Your registration is still awaiting an administrator\'s approval.',
     ],
 
     'units' => [
@@ -96,5 +98,30 @@ return [
         'update_error' => 'Error updating package.',
         'delete_error' => 'Error deleting package.',
         'deliver_error' => 'Error delivering package.',
+    ],
+
+    'registration_requests' => [
+        'not_found' => 'Registration request not found.',
+        'required_fields' => 'Name, email and password are required.',
+        'name_too_long' => 'Name must be at most 150 characters.',
+        'invalid_email' => 'Invalid email.',
+        'password_too_short' => 'Password must be at least 8 characters.',
+        'password_too_long' => 'Password must be at most 255 characters.',
+        'email_taken' => 'A user or registration request with this email already exists.',
+        'created' => 'Registration request sent. Wait for an administrator\'s approval.',
+        'approved' => 'Registration approved. The user can now sign in.',
+        'rejected' => 'Registration request rejected and deleted.',
+        'fetch_error' => 'Error fetching registration requests.',
+        'create_error' => 'Error sending the registration request.',
+        'approve_error' => 'Error approving the registration request.',
+        'reject_error' => 'Error rejecting the registration request.',
+    ],
+
+    'users' => [
+        'not_found' => 'User not found.',
+        'cannot_delete_admin' => 'Administrators cannot be deleted.',
+        'deleted' => 'User deleted. Their access has been revoked.',
+        'fetch_error' => 'Error fetching users.',
+        'delete_error' => 'Error deleting user.',
     ],
 ];

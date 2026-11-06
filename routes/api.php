@@ -7,10 +7,13 @@ use App\Http\Controllers\Inventory\InventoryItemController;
 use App\Http\Controllers\Inventory\ItemCategoryController;
 use App\Http\Controllers\Inventory\StorageController;
 use App\Http\Controllers\Inventory\UnitController;
+use App\Http\Controllers\User\RegistrationRequestController;
+use App\Http\Controllers\User\UserController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
     Route::post('login', [AuthController::class, 'login'])->name('auth.login');
+    Route::post('register', [AuthController::class, 'register'])->name('auth.register');
     Route::post('logout', [AuthController::class, 'logout'])->name('auth.logout');
     Route::get('me', [AuthController::class, 'me'])->middleware('auth')->name('auth.me');
     Route::prefix('token')->group(function () {
@@ -57,6 +60,22 @@ Route::middleware('auth')->group(function () {
             Route::put('', [DeliveryPackageController::class, 'update'])->name('delivery-packages.update');
             Route::delete('', [DeliveryPackageController::class, 'destroy'])->name('delivery-packages.destroy');
             Route::post('deliver', [DeliveryPackageController::class, 'deliver'])->name('delivery-packages.deliver');
+        });
+    });
+
+    // Administração: só admins (403 para usuário comum).
+    Route::middleware('admin')->group(function () {
+        Route::prefix('users')->group(function () {
+            Route::get('', [UserController::class, 'index'])->name('users.index');
+            Route::delete('{user_id}', [UserController::class, 'destroy'])->name('users.destroy');
+        });
+
+        Route::prefix('registration-requests')->group(function () {
+            Route::get('', [RegistrationRequestController::class, 'index'])->name('registration-requests.index');
+            Route::prefix('{registration_request_id}')->group(function () {
+                Route::post('approve', [RegistrationRequestController::class, 'approve'])->name('registration-requests.approve');
+                Route::delete('', [RegistrationRequestController::class, 'destroy'])->name('registration-requests.destroy');
+            });
         });
     });
 

@@ -6,7 +6,7 @@ use App\Models\User;
 use Illuminate\Database\Seeder;
 
 /**
- * Primeira conta de acesso (não há cadastro público), a partir de SEED_ADMIN_* no .env.
+ * Primeira conta de acesso — o admin, que aprova os pedidos de cadastro — a partir de SEED_ADMIN_* no .env.
  */
 class AdminUserSeeder extends Seeder {
 
@@ -20,7 +20,17 @@ class AdminUserSeeder extends Seeder {
             return;
         }
 
-        if (User::where('email', $email)->exists()) {
+        $existing = User::where('email', $email)->first();
+
+        if ($existing) {
+            // Contas criadas antes da coluna `is_admin` passam a ser admin.
+            if (!$existing->is_admin) {
+                $existing->update(['is_admin' => true]);
+                $this->command?->info("User \"{$email}\" promoted to admin.");
+
+                return;
+            }
+
             $this->command?->info("Admin user \"{$email}\" already exists, skipping.");
 
             return;
@@ -30,6 +40,7 @@ class AdminUserSeeder extends Seeder {
             'name' => $admin['name'],
             'email' => $email,
             'password' => $admin['password'],
+            'is_admin' => true,
         ]);
 
         $this->command?->info("Admin user \"{$email}\" created.");

@@ -19,7 +19,7 @@ describe('POST /api/auth/login', function () {
         $response = login('  ANA@example.com ');
 
         $response->assertOk()
-            ->assertJsonPath('data.user', ['id' => $user->id, 'name' => 'Ana', 'email' => 'ana@example.com'])
+            ->assertJsonPath('data.user', ['id' => $user->id, 'name' => 'Ana', 'email' => 'ana@example.com', 'is_admin' => false])
             ->assertJsonPath('message.pt-br', 'Login realizado com sucesso.');
 
         expect(array_keys($response->json('data')))->toBe(['user', 'access_token', 'refresh_token', 'expires_in', 'refresh_expires_in'])

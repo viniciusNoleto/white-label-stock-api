@@ -3,6 +3,7 @@
 return [
     'success' => 'Operación realizada con éxito.',
     'unauthorized' => 'Debes iniciar sesión para continuar.',
+    'forbidden' => 'No tienes permiso para acceder a este recurso.',
     'not_found' => 'Registro no encontrado.',
     'server_error' => 'Error inesperado. Inténtalo de nuevo.',
     'invalid_payload' => 'Datos inválidos.',
@@ -11,6 +12,7 @@ return [
         'invalid_credentials' => 'Correo o contraseña inválidos.',
         'logged_in' => 'Inicio de sesión exitoso.',
         'logged_out' => 'Sesión cerrada.',
+        'pending_approval' => 'Tu registro aún espera la aprobación de un administrador.',
     ],
 
     'units' => [
@@ -96,5 +98,30 @@ return [
         'update_error' => 'Error al actualizar el paquete.',
         'delete_error' => 'Error al eliminar el paquete.',
         'deliver_error' => 'Error al entregar el paquete.',
+    ],
+
+    'registration_requests' => [
+        'not_found' => 'Solicitud de registro no encontrada.',
+        'required_fields' => 'Nombre, correo y contraseña son obligatorios.',
+        'name_too_long' => 'El nombre debe tener como máximo 150 caracteres.',
+        'invalid_email' => 'Correo inválido.',
+        'password_too_short' => 'La contraseña debe tener al menos 8 caracteres.',
+        'password_too_long' => 'La contraseña debe tener como máximo 255 caracteres.',
+        'email_taken' => 'Ya existe un usuario o una solicitud de registro con este correo.',
+        'created' => 'Solicitud de registro enviada. Espera la aprobación de un administrador.',
+        'approved' => 'Registro aprobado. El usuario ya puede iniciar sesión.',
+        'rejected' => 'Solicitud de registro rechazada y eliminada.',
+        'fetch_error' => 'Error al buscar solicitudes de registro.',
+        'create_error' => 'Error al enviar la solicitud de registro.',
+        'approve_error' => 'Error al aprobar la solicitud de registro.',
+        'reject_error' => 'Error al rechazar la solicitud de registro.',
+    ],
+
+    'users' => [
+        'not_found' => 'Usuario no encontrado.',
+        'cannot_delete_admin' => 'Los administradores no se pueden eliminar.',
+        'deleted' => 'Usuario eliminado. Su acceso fue cancelado.',
+        'fetch_error' => 'Error al buscar usuarios.',
+        'delete_error' => 'Error al eliminar usuario.',
     ],
 ];
