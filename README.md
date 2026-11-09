@@ -36,13 +36,15 @@ Errors always carry `data: null`: 400 malformed JSON · 401 no session · 403 fo
 | `PUT` `DELETE` | `/api/item-categories/{id}` | update / delete |
 | `GET` `POST` | `/api/storages` | list / create |
 | `PUT` `DELETE` | `/api/storages/{id}` | update / delete |
-| `GET` | `/api/inventory-items` | `?search=&page=&per_page=` → `{ items, meta }`; `packaged_quantity` = sum in pending delivery packages |
-| `POST` | `/api/inventory-items` | create with `category_ids` and `components` |
-| `PATCH` | `/api/inventory-items/{id}` | `quantity` (≥ 0) **ou** `quantity_add` / `quantity_subtract` (> 0; subtrair além do estoque → 422) / `name` / `unit_id` / `category_ids` (substitui todas; `[]` limpa) / `storage_id` |
-| `POST` | `/api/inventory-items/{id}/build` | consumes the recipe and adds `quantity` (locks the component rows) |
-| `GET` `POST` | `/api/delivery-packages` | `?status=pending\|delivered&page=&per_page=` → `{ items, meta }` / create `{ items: [{ id, quantity }], notes }` (only free stock: quantity − already packaged → 422) |
+| `GET` `POST` | `/api/products` | `?search=&page=&per_page=` → `{ items, meta }` with `stock_quantity`, `reserved_quantity`, `expired_quantity`, `items_count` / create `{ name, sku?, unit_id, is_atomic, shelf_life_days?, category_ids, components: [{ id, quantity_required }] }` |
+| `PUT` `DELETE` | `/api/products/{id}` | replace everything (recipe cycles → 422; atomic ↔ bulk only without items → 422) / delete (409 with items, in a recipe or in packages) |
+| `GET` | `/api/items` | `?search=&product_id=&storage_id=&expiration=expired\|expiring\|valid&page=&per_page=` → items by product, first-expiring first, with `reserved_quantity` |
+| `POST` | `/api/items` | `{ product_id, quantity, produced_at?, storage_id?, code?, consume_components? }` → atomic: `quantity` items with their own codes (`{SKU}-0001`…, batch up to 500); bulk: one lot. `expires_at` = `produced_at` + shelf life. `consume_components` takes the recipe out of the stock (FEFO, never expired items) |
+| `PATCH` `DELETE` | `/api/items/{id}` | `code` / `produced_at` (recalculates `expires_at`) / `expires_at` / `storage_id` / bulk only: `quantity` \| `quantity_add` \| `quantity_subtract` (never below 0 nor below what is reserved) / delete (409 when reserved in a pending package) |
+| `GET` | `/api/stock` | operation view: atomic items grouped per product (`kind: group`), bulk lots one per row (`kind: record`, empty lots left out) |
+| `GET` `POST` | `/api/delivery-packages` | `?status=pending\|delivered&page=&per_page=` → `{ items, meta }` / create `{ items: [{ product_id, quantity }], notes }` → reserves specific items first-expiring first (never expired; only free stock → 422) and returns them as `allocations` (codes to pick) |
 | `GET` `PUT` `DELETE` | `/api/delivery-packages/{id}` | show / replace `items` + `notes` (pending only) / delete (stock untouched) |
-| `POST` | `/api/delivery-packages/{id}/deliver` | marks as delivered and subtracts the items from the stock (422 if delivered or short) |
+| `POST` | `/api/delivery-packages/{id}/deliver` | marks as delivered: atomic items leave the stock, bulk lots are subtracted (422 if delivered or short) |
 | `GET` | `/api/registration-requests` | **admin** · `?search=&page=&per_page=` → pending requests, oldest first |
 | `POST` | `/api/registration-requests/{id}/approve` | **admin** · creates a regular user with the requested password and deletes the request |
 | `DELETE` | `/api/registration-requests/{id}` | **admin** · rejects (deletes) the request |

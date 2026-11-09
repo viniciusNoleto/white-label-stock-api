@@ -9,8 +9,8 @@ it('builds the api message in every locale', function () {
 });
 
 it('interpolates the api message', function () {
-    expect(api_message('messages.inventory_items.built', ['quantity' => 2])['pt-br'])
-        ->toBe('2 unidade(s) construída(s) com sucesso.');
+    expect(api_message('messages.items.created', ['count' => 8])['pt-br'])
+        ->toBe('8 item(ns) gerado(s) com sucesso.');
 });
 
 it('parses only positive integer ids', function (mixed $value, ?int $expected) {
@@ -41,3 +41,12 @@ it('hashes tokens with sha256', function () {
         ->and(hash_token($token))->toBe(hash('sha256', $token))
         ->and(generate_opaque_token())->not->toBe($token);
 });
+
+it('detects whole decimals', function (string $value, bool $expected) {
+    expect(is_whole_number($value))->toBe($expected);
+})->with([
+    ['3.0000', true],
+    ['0', true],
+    ['2.5000', false],
+    ['0.0001', false],
+]);

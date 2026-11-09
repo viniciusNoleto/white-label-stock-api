@@ -1,6 +1,6 @@
 <?php
 
-use App\Models\Inventory\InventoryItem;
+use App\Models\Inventory\Item;
 use App\Models\Inventory\Storage;
 
 beforeEach(function () {
@@ -69,11 +69,11 @@ describe('DELETE /api/storages/{storage_id}', function () {
 
     it('returns 409 while the storage holds items', function () {
         $storage = Storage::factory()->create();
-        InventoryItem::factory()->create(['storage_id' => $storage->id]);
+        Item::factory()->create(['storage_id' => $storage->id]);
 
         $this->deleteJson("/api/storages/{$storage->id}")
             ->assertConflict()
-            ->assertJsonPath('message.en-us', 'This storage is in use by inventory items.');
+            ->assertJsonPath('message.en-us', 'This storage is in use by stock items.');
     });
 
     it('returns 500 when the database fails', function () {

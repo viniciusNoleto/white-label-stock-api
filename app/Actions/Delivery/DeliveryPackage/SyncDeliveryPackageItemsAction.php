@@ -2,69 +2,53 @@
 
 namespace App\Actions\Delivery\DeliveryPackage;
 
-use App\Enum\Delivery\DeliveryPackageStatusEnum;
+use App\Actions\Inventory\Item\AllocateProductStockAction;
 use App\Exceptions\ApiException;
 use App\Models\Delivery\DeliveryPackage;
-use App\Models\Inventory\InventoryItem;
-use Illuminate\Support\Facades\DB;
+use App\Models\Delivery\DeliveryPackageLine;
+use App\Models\Inventory\Product;
 
 final class SyncDeliveryPackageItemsAction {
 
-    private const SCALE = 4;
+    public function __construct(
+        private readonly AllocateProductStockAction $allocate,
+    ) {
+    }
 
     /**
-     * Substitui os itens do pacote. Só empacota o que está livre no estoque:
-     * `quantidade do item − já empacotado em outros pacotes pendentes`.
-     * Deve rodar dentro de uma transação: as linhas dos itens ficam travadas até o fim dela,
-     * então dois pacotes simultâneos não conseguem separar o mesmo estoque.
+     * Substitui o conteúdo do pacote: para cada produto, reserva itens livres em ordem FEFO
+     * (atômico: N itens com código; a granel: dos lotes que vencem primeiro). As reservas antigas
+     * do pacote são desfeitas antes, então ele pode reaproveitar os próprios itens.
+     * Deve rodar dentro de uma transação (os itens ficam travados até o fim dela).
      *
      * @param DeliveryPackage $package
-     * @param array<int, array{id: int, quantity: string}> $items
+     * @param array<int, array{product_id: int, quantity: string}> $items
      * @return void
      * @throws ApiException
      */
     public function handle(DeliveryPackage $package, array $items): void {
-        $ids = array_column($items, 'id');
+        $products = Product::query()->whereIn('id', array_column($items, 'product_id'))->get()->keyBy('id');
 
-        // Sempre na mesma ordem (id), evitando deadlock entre operações simultâneas.
-        $stock = InventoryItem::query()
-            ->whereIn('id', $ids)
-            ->orderBy('id')
-            ->lockForUpdate()
-            ->get()
-            ->keyBy('id');
-
-        if ($stock->count() !== count($ids)) {
+        if ($products->count() !== count($items)) {
             throw new ApiException('messages.delivery_packages.invalid_reference');
         }
 
-        $packaged = DB::table('delivery_package_has_item')
-            ->join('delivery_packages', 'delivery_packages.id', '=', 'delivery_package_has_item.delivery_package_id')
-            ->where('delivery_packages.status', DeliveryPackageStatusEnum::PENDING->value)
-            ->where('delivery_packages.id', '!=', $package->id)
-            ->whereIn('delivery_package_has_item.inventory_item_id', $ids)
-            ->groupBy('delivery_package_has_item.inventory_item_id')
-            ->selectRaw('delivery_package_has_item.inventory_item_id, SUM(delivery_package_has_item.quantity) AS total')
-            ->pluck('total', 'inventory_item_id');
+        $package->lines()->delete();
 
-        foreach ($items as $item) {
-            $current = $stock->get($item['id']);
-            $available = bcsub($current->quantity, (string)($packaged->get($item['id']) ?? '0'), self::SCALE);
+        // Sempre na mesma ordem (id do produto), evitando deadlock entre operações simultâneas.
+        foreach (collect($items)->sortBy('product_id') as $entry) {
+            $product = $products->get($entry['product_id']);
+            $allocations = $this->allocate->handle($product, $entry['quantity'], 'messages.delivery_packages.insufficient_stock');
 
-            if (bccomp($item['quantity'], $available, self::SCALE) > 0) {
-                throw new ApiException('messages.delivery_packages.insufficient_stock', 422, [
-                    'name' => $current->name,
-                    'required' => format_decimal($item['quantity']),
-                    'available' => format_decimal(bccomp($available, '0', self::SCALE) < 0 ? '0' : $available),
+            foreach ($allocations as $allocation) {
+                DeliveryPackageLine::create([
+                    'delivery_package_id' => $package->id,
+                    'product_id' => $product->id,
+                    'item_id' => $allocation['item']->id,
+                    'item_code' => $allocation['item']->code,
+                    'quantity' => $allocation['quantity'],
                 ]);
             }
         }
-
-        $package->items()->detach();
-        $package->items()->attach(
-            collect($items)->mapWithKeys(fn($item) => [
-                $item['id'] => ['quantity' => $item['quantity'], 'created_at' => now()],
-            ])->all()
-        );
     }
 }

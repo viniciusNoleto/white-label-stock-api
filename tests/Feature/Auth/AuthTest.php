@@ -80,7 +80,7 @@ describe('protected API routes', function () {
                 'data' => null,
                 'message' => api_message('messages.unauthorized'),
             ]);
-    })->with(['/api/units', '/api/item-categories', '/api/storages', '/api/inventory-items']);
+    })->with(['/api/units', '/api/item-categories', '/api/storages', '/api/products', '/api/items', '/api/stock']);
 
     it('rejects an unknown or expired access token', function () {
         User::factory()->create(['email' => 'ana@example.com']);

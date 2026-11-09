@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Http\Requests\InventoryItem;
+namespace App\Http\Requests\Item;
 
 use App\Http\Requests\BaseRequest;
 use Illuminate\Validation\Validator;
 
-class UpdateInventoryItemRequest extends BaseRequest {
+class UpdateItemRequest extends BaseRequest {
 
     private const QUANTITY_FIELDS = ['quantity', 'quantity_add', 'quantity_subtract'];
 
@@ -17,9 +17,9 @@ class UpdateInventoryItemRequest extends BaseRequest {
             'quantity' => 'nullable|numeric|min:0',
             'quantity_add' => 'nullable|numeric|gt:0',
             'quantity_subtract' => 'nullable|numeric|gt:0',
-            'name' => 'sometimes|required|string|max:255',
-            'unit_id' => 'sometimes|required|integer|min:1',
-            'category_ids' => 'sometimes|present|array',
+            'code' => 'sometimes|required|string|max:80',
+            'produced_at' => 'sometimes|required|date_format:Y-m-d',
+            'expires_at' => 'nullable|date_format:Y-m-d',
             'storage_id' => 'nullable',
         ];
     }
@@ -29,18 +29,17 @@ class UpdateInventoryItemRequest extends BaseRequest {
      */
     public function messages(): array {
         return [
-            'quantity.*' => 'messages.inventory_items.invalid_quantity',
-            'quantity_add.*' => 'messages.inventory_items.invalid_quantity',
-            'quantity_subtract.*' => 'messages.inventory_items.invalid_quantity',
-            'name.*' => 'messages.inventory_items.name_required',
-            'unit_id.*' => 'messages.inventory_items.unit_required',
-            'category_ids.*' => 'messages.inventory_items.invalid_categories',
+            'quantity.*' => 'messages.items.invalid_quantity',
+            'quantity_add.*' => 'messages.items.invalid_quantity',
+            'quantity_subtract.*' => 'messages.items.invalid_quantity',
+            'code.*' => 'messages.items.invalid_code',
+            'produced_at.*' => 'messages.items.invalid_date',
+            'expires_at.*' => 'messages.items.invalid_date',
         ];
     }
 
     /**
-     * Payload sem nenhum campo atualizável (`storage_id: null` conta: desvincula o armazenamento;
-     * `category_ids: []` conta: remove todas as categorias)
+     * Payload sem nenhum campo atualizável (`storage_id: null`/`expires_at: null` contam: limpam o campo)
      * ou com mais de um modo de quantidade (definir, somar e subtrair são exclusivos).
      *
      * @return array<int, callable>
@@ -55,9 +54,9 @@ class UpdateInventoryItemRequest extends BaseRequest {
                 $quantity_fields = collect(self::QUANTITY_FIELDS)->filter(fn($field) => $this->input($field) !== null)->count();
 
                 if ($quantity_fields > 1) {
-                    $validator->errors()->add('payload', 'messages.inventory_items.single_quantity_mode');
-                } elseif (!$quantity_fields && !$this->hasAny(['name', 'unit_id', 'category_ids', 'storage_id'])) {
-                    $validator->errors()->add('payload', 'messages.inventory_items.no_fields');
+                    $validator->errors()->add('payload', 'messages.items.single_quantity_mode');
+                } elseif (!$quantity_fields && !$this->hasAny(['code', 'produced_at', 'expires_at', 'storage_id'])) {
+                    $validator->errors()->add('payload', 'messages.items.no_fields');
                 }
             },
         ];

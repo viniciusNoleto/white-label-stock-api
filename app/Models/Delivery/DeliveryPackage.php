@@ -4,16 +4,15 @@ namespace App\Models\Delivery;
 
 use App\Enum\Delivery\DeliveryPackageStatusEnum;
 use App\Models\Concerns\FindsOrFailsByKey;
-use App\Models\Inventory\InventoryItem;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * Pacote de entrega: itens do estoque com quantidade + anotações livres.
- * `quantity` do pivot é decimal(15,4) e sai como string (`"2.0000"`).
+ * Pacote de entrega: produtos com quantidade + anotações livres. Cada produto vira linhas
+ * (`DeliveryPackageLine`) com os itens reservados para ele (FEFO).
  */
 class DeliveryPackage extends Model {
 
@@ -37,9 +36,8 @@ class DeliveryPackage extends Model {
         ];
     }
 
-    public function items(): BelongsToMany {
-        return $this->belongsToMany(InventoryItem::class, 'delivery_package_has_item', 'delivery_package_id', 'inventory_item_id')
-            ->withPivot('quantity', 'created_at');
+    public function lines(): HasMany {
+        return $this->hasMany(DeliveryPackageLine::class, 'delivery_package_id', 'id');
     }
 
     public function isDelivered(): bool {

@@ -1,7 +1,8 @@
 <?php
 
 use App\Models\Delivery\DeliveryPackage;
-use App\Models\Inventory\InventoryItem;
+use App\Models\Inventory\Item;
+use App\Models\Inventory\Product;
 use App\Models\Inventory\Unit;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
@@ -11,32 +12,54 @@ beforeEach(function () {
 });
 
 /**
- * @return array{0: InventoryItem, 1: InventoryItem}
+ * Coco a granel em dois lotes (6 vence em 10 dias, 4 vence em 3 dias) e bolos atômicos
+ * (BOLO-0001 vence em 5 dias, BOLO-0002 em 2 dias, BOLO-0003 não vence).
+ *
+ * @return array{0: Product, 1: Product}
  */
-function seedDindins(string $coco = '10', string $morango = '5'): array {
+function seedPackageStock(): array {
     $unit = Unit::factory()->create(['name' => 'Unidade', 'abbreviation' => 'un']);
+    $coco = Product::factory()->bulk()->create(['name' => 'Coco ralado', 'unit_id' => $unit->id]);
+    $cake = Product::factory()->create(['name' => 'Bolo', 'sku' => 'BOLO', 'unit_id' => $unit->id]);
 
-    return [
-        InventoryItem::factory()->create(['name' => 'Dindin de coco', 'quantity' => $coco, 'unit_id' => $unit->id]),
-        InventoryItem::factory()->create(['name' => 'Dindin de morango', 'quantity' => $morango, 'unit_id' => $unit->id]),
-    ];
+    Item::factory()->create(['product_id' => $coco->id, 'code' => 'COCO-L1', 'quantity' => '6', 'expires_at' => now()->addDays(10)->toDateString()]);
+    Item::factory()->create(['product_id' => $coco->id, 'code' => 'COCO-L2', 'quantity' => '4', 'expires_at' => now()->addDays(3)->toDateString()]);
+    Item::factory()->create(['product_id' => $cake->id, 'code' => 'BOLO-0001', 'expires_at' => now()->addDays(5)->toDateString()]);
+    Item::factory()->create(['product_id' => $cake->id, 'code' => 'BOLO-0002', 'expires_at' => now()->addDays(2)->toDateString()]);
+    Item::factory()->create(['product_id' => $cake->id, 'code' => 'BOLO-0003']);
+
+    return [$coco, $cake];
 }
 
-function createPackage(mixed $items, ?string $notes = null): TestResponse {
+function postPackage(mixed $items, ?string $notes = null): TestResponse {
     return test()->postJson('/api/delivery-packages', ['items' => $items, 'notes' => $notes]);
 }
 
-function stockByName(): array {
-    return collect(test()->getJson('/api/inventory-items')->json('data.items'))
-        ->mapWithKeys(fn($item) => [$item['name'] => [$item['quantity'], $item['packaged_quantity']]])
+/**
+ * `[estoque, reservado]` por produto.
+ *
+ * @return array<string, array{0: string, 1: string}>
+ */
+function productStock(): array {
+    return collect(test()->getJson('/api/products')->json('data.items'))
+        ->mapWithKeys(fn($product) => [$product['name'] => [$product['stock_quantity'], $product['reserved_quantity']]])
+        ->all();
+}
+
+/**
+ * @return array<string, array{0: string, 1: string}> `[quantidade, reservado]` por código
+ */
+function itemStock(): array {
+    return collect(test()->getJson('/api/items')->json('data.items'))
+        ->mapWithKeys(fn($item) => [$item['code'] => [$item['quantity'], $item['reserved_quantity']]])
         ->all();
 }
 
 describe('POST /api/delivery-packages', function () {
-    it('creates a pending package with items and notes', function () {
-        [$coco, $morango] = seedDindins();
+    it('creates a pending package reserving items first-expiring-first', function () {
+        [$coco, $cake] = seedPackageStock();
 
-        $response = createPackage([['id' => $morango->id, 'quantity' => 2], ['id' => (string)$coco->id, 'quantity' => '3']], "Rua A, 10\nEntregar após 14h");
+        $response = postPackage([['product_id' => $coco->id, 'quantity' => 7], ['product_id' => (string)$cake->id, 'quantity' => '2']], "Rua A, 10\nEntregar após 14h");
 
         $response->assertCreated()
             ->assertJsonPath('message.pt-br', 'Pacote criado com sucesso.')
@@ -44,98 +67,143 @@ describe('POST /api/delivery-packages', function () {
             ->assertJsonPath('data.notes', "Rua A, 10\nEntregar após 14h")
             ->assertJsonPath('data.delivered_at', null);
 
+        $l1 = Item::where('code', 'COCO-L1')->value('id');
+        $l2 = Item::where('code', 'COCO-L2')->value('id');
+        $b1 = Item::where('code', 'BOLO-0001')->value('id');
+        $b2 = Item::where('code', 'BOLO-0002')->value('id');
+
         expect(array_keys($response->json('data')))->toBe(['id', 'status', 'notes', 'delivered_at', 'created_at', 'updated_at', 'items'])
             ->and($response->json('data.items'))->toBe([
-                ['id' => $coco->id, 'name' => 'Dindin de coco', 'quantity' => '3.0000', 'current_quantity' => '10.0000', 'unit' => ['id' => $coco->unit_id, 'name' => 'Unidade', 'abbreviation' => 'un']],
-                ['id' => $morango->id, 'name' => 'Dindin de morango', 'quantity' => '2.0000', 'current_quantity' => '5.0000', 'unit' => ['id' => $morango->unit_id, 'name' => 'Unidade', 'abbreviation' => 'un']],
+                [
+                    'product_id' => $cake->id, 'name' => 'Bolo', 'is_atomic' => true, 'quantity' => '2.0000', 'stock_quantity' => '3.0000',
+                    'unit' => ['id' => $cake->unit_id, 'name' => 'Unidade', 'abbreviation' => 'un'],
+                    'allocations' => [
+                        ['item_id' => $b2, 'code' => 'BOLO-0002', 'quantity' => '1.0000'],
+                        ['item_id' => $b1, 'code' => 'BOLO-0001', 'quantity' => '1.0000'],
+                    ],
+                ],
+                [
+                    'product_id' => $coco->id, 'name' => 'Coco ralado', 'is_atomic' => false, 'quantity' => '7.0000', 'stock_quantity' => '10.0000',
+                    'unit' => ['id' => $coco->unit_id, 'name' => 'Unidade', 'abbreviation' => 'un'],
+                    'allocations' => [
+                        ['item_id' => $l2, 'code' => 'COCO-L2', 'quantity' => '4.0000'],
+                        ['item_id' => $l1, 'code' => 'COCO-L1', 'quantity' => '3.0000'],
+                    ],
+                ],
             ]);
     });
 
-    it('does not subtract the stock but shows it as packaged in the items list', function () {
-        [$coco, $morango] = seedDindins();
+    it('does not subtract the stock but shows it as reserved', function () {
+        [$coco, $cake] = seedPackageStock();
 
-        createPackage([['id' => $coco->id, 'quantity' => 3]])->assertCreated();
-        createPackage([['id' => $coco->id, 'quantity' => 2], ['id' => $morango->id, 'quantity' => 1.5]])->assertCreated();
-        createPackage([['id' => $morango->id, 'quantity' => 1]])->assertCreated();
-        DeliveryPackage::factory()->delivered()->create()->items()->attach($coco->id, ['quantity' => '4']);
+        postPackage([['product_id' => $coco->id, 'quantity' => 3], ['product_id' => $cake->id, 'quantity' => 1]])->assertCreated();
+        postPackage([['product_id' => $coco->id, 'quantity' => 2.5]])->assertCreated();
 
-        expect(stockByName())->toBe([
-            'Dindin de coco' => ['10.0000', '5.0000'],
-            'Dindin de morango' => ['5.0000', '2.5000'],
+        expect(productStock())->toBe([
+            'Bolo' => ['3.0000', '1.0000'],
+            'Coco ralado' => ['10.0000', '5.5000'],
+        ])->and(itemStock())->toBe([
+            'BOLO-0002' => ['1.0000', '1.0000'],
+            'BOLO-0001' => ['1.0000', '0.0000'],
+            'BOLO-0003' => ['1.0000', '0.0000'],
+            'COCO-L2' => ['4.0000', '4.0000'],
+            'COCO-L1' => ['6.0000', '1.5000'],
         ]);
     });
 
     it('stores blank notes as null', function () {
-        [$coco] = seedDindins();
+        [$coco] = seedPackageStock();
 
-        createPackage([['id' => $coco->id, 'quantity' => 1]], "   \n  ")->assertJsonPath('data.notes', null);
+        postPackage([['product_id' => $coco->id, 'quantity' => 1]], "   \n  ")->assertJsonPath('data.notes', null);
     });
 
     it('rejects packaging more than the free stock and creates nothing', function () {
-        [$coco] = seedDindins('10');
-        createPackage([['id' => $coco->id, 'quantity' => 7]])->assertCreated();
+        [$coco, $cake] = seedPackageStock();
+        postPackage([['product_id' => $coco->id, 'quantity' => 7]])->assertCreated();
 
-        createPackage([['id' => $coco->id, 'quantity' => 4]])
+        postPackage([['product_id' => $cake->id, 'quantity' => 1], ['product_id' => $coco->id, 'quantity' => 4]])
             ->assertUnprocessable()
             ->assertJsonPath('data', null)
-            ->assertJsonPath('message.pt-br', 'Estoque livre insuficiente de "Dindin de coco" para empacotar. Necessário: 4, Disponível: 3.');
+            ->assertJsonPath('message.pt-br', 'Estoque livre insuficiente de "Coco ralado" para empacotar. Necessário: 4, Disponível: 3.');
 
-        expect(DeliveryPackage::count())->toBe(1);
+        expect(DeliveryPackage::count())->toBe(1)
+            ->and(DB::table('delivery_package_has_item')->where('product_id', $cake->id)->count())->toBe(0);
+    });
+
+    it('does not reserve expired items', function () {
+        [, $cake] = seedPackageStock();
+        Item::where('code', 'BOLO-0002')->update(['expires_at' => now()->subDay()->toDateString()]);
+
+        postPackage([['product_id' => $cake->id, 'quantity' => 3]])
+            ->assertUnprocessable()
+            ->assertJsonPath('message.pt-br', 'Estoque livre insuficiente de "Bolo" para empacotar. Necessário: 3, Disponível: 2.');
+
+        postPackage([['product_id' => $cake->id, 'quantity' => 1]])->assertJsonPath('data.items.0.allocations.0.code', 'BOLO-0001');
+
+        expect(productStock()['Bolo'])->toBe(['3.0000', '1.0000']);
+    });
+
+    it('only packages whole units of an atomic product', function () {
+        [, $cake] = seedPackageStock();
+
+        postPackage([['product_id' => $cake->id, 'quantity' => 1.5]])
+            ->assertUnprocessable()
+            ->assertJsonPath('message.pt-br', '"Bolo" é contado por unidade: use uma quantidade inteira.');
     });
 
     it('rejects invalid items', function (mixed $items) {
-        seedDindins();
+        seedPackageStock();
 
-        createPackage($items)
+        postPackage($items)
             ->assertUnprocessable()
-            ->assertJsonPath('message.en-us', 'Select at least one item, each with a quantity greater than zero.');
+            ->assertJsonPath('message.en-us', 'Select at least one product, each with a quantity greater than zero.');
     })->with([
         'missing' => [null],
         'empty' => [[]],
         'not a list' => ['x'],
-        'no id' => [[['quantity' => 1]]],
-        'invalid id' => [[['id' => 'abc', 'quantity' => 1]]],
+        'no product' => [[['quantity' => 1]]],
+        'invalid product' => [[['product_id' => 'abc', 'quantity' => 1]]],
     ]);
 
     it('rejects an invalid quantity', function (mixed $quantity) {
-        [$coco] = seedDindins();
+        [$coco] = seedPackageStock();
 
-        createPackage([['id' => $coco->id, 'quantity' => $quantity]])
+        postPackage([['product_id' => $coco->id, 'quantity' => $quantity]])
             ->assertUnprocessable()
-            ->assertJsonPath('message.en-us', 'Select at least one item, each with a quantity greater than zero.');
+            ->assertJsonPath('message.en-us', 'Select at least one product, each with a quantity greater than zero.');
     })->with([null, 0, -1, 'abc']);
 
-    it('rejects the same item twice', function () {
-        [$coco] = seedDindins();
+    it('rejects the same product twice', function () {
+        [$coco] = seedPackageStock();
 
-        createPackage([['id' => $coco->id, 'quantity' => 1], ['id' => $coco->id, 'quantity' => 2]])
+        postPackage([['product_id' => $coco->id, 'quantity' => 1], ['product_id' => $coco->id, 'quantity' => 2]])
             ->assertUnprocessable()
-            ->assertJsonPath('message.en-us', 'Each item can appear only once in the package.');
+            ->assertJsonPath('message.en-us', 'Each product can appear only once in the package.');
     });
 
     it('rejects notes that are too long', function () {
-        [$coco] = seedDindins();
+        [$coco] = seedPackageStock();
 
-        createPackage([['id' => $coco->id, 'quantity' => 1]], str_repeat('a', 10001))
+        postPackage([['product_id' => $coco->id, 'quantity' => 1]], str_repeat('a', 10001))
             ->assertUnprocessable()
             ->assertJsonPath('message.en-us', 'Notes must be a text of up to 10000 characters.');
     });
 
-    it('returns 422 for an item that does not exist and creates nothing', function () {
-        [$coco] = seedDindins();
+    it('returns 422 for a product that does not exist and creates nothing', function () {
+        [$coco] = seedPackageStock();
 
-        createPackage([['id' => $coco->id, 'quantity' => 1], ['id' => 999, 'quantity' => 1]])
+        postPackage([['product_id' => $coco->id, 'quantity' => 1], ['product_id' => 999, 'quantity' => 1]])
             ->assertUnprocessable()
-            ->assertJsonPath('message.en-us', 'Some of the given items do not exist.');
+            ->assertJsonPath('message.en-us', 'Some of the given products do not exist.');
 
         expect(DeliveryPackage::count())->toBe(0);
     });
 
     it('returns 500 when the database fails', function () {
-        [$coco] = seedDindins();
+        [$coco] = seedPackageStock();
         failTable('delivery_packages');
 
-        createPackage([['id' => $coco->id, 'quantity' => 1]])
+        postPackage([['product_id' => $coco->id, 'quantity' => 1]])
             ->assertInternalServerError()
             ->assertJsonPath('message.en-us', 'Error creating package.');
     });
@@ -143,18 +211,17 @@ describe('POST /api/delivery-packages', function () {
 
 describe('GET /api/delivery-packages', function () {
     it('lists the most recent first, filters by status and paginates', function () {
-        [$coco] = seedDindins();
+        [$coco] = seedPackageStock();
         $old = DeliveryPackage::factory()->delivered()->create(['created_at' => now()->subDay()]);
-        $new = DeliveryPackage::factory()->create(['notes' => 'Maria']);
-        $new->items()->attach($coco->id, ['quantity' => '2']);
+        $new = postPackage([['product_id' => $coco->id, 'quantity' => 2]], 'Maria')->json('data.id');
 
         $all = $this->getJson('/api/delivery-packages')->assertOk()->json('data');
 
-        expect(collect($all['items'])->pluck('id')->all())->toBe([$new->id, $old->id])
-            ->and($all['items'][0]['items'][0])->toMatchArray(['id' => $coco->id, 'quantity' => '2.0000'])
+        expect(collect($all['items'])->pluck('id')->all())->toBe([$new, $old->id])
+            ->and($all['items'][0]['items'][0])->toMatchArray(['product_id' => $coco->id, 'quantity' => '2.0000'])
             ->and($all['meta'])->toBe(['page' => 1, 'per_page' => 15, 'total' => 2, 'last_page' => 1])
             ->and(collect($this->getJson('/api/delivery-packages?status=delivered')->json('data.items'))->pluck('id')->all())->toBe([$old->id])
-            ->and(collect($this->getJson('/api/delivery-packages?status=PENDING')->json('data.items'))->pluck('id')->all())->toBe([$new->id])
+            ->and(collect($this->getJson('/api/delivery-packages?status=PENDING')->json('data.items'))->pluck('id')->all())->toBe([$new])
             ->and($this->getJson('/api/delivery-packages?status=xyz')->json('data.meta.total'))->toBe(2)
             ->and($this->getJson('/api/delivery-packages?page=2&per_page=1')->json('data.items.0.id'))->toBe($old->id);
     });
@@ -187,35 +254,36 @@ describe('GET /api/delivery-packages/{delivery_package_id}', function () {
 });
 
 describe('PUT /api/delivery-packages/{delivery_package_id}', function () {
-    it('replaces notes and items, counting its own items as free', function () {
-        [$coco, $morango] = seedDindins('10', '5');
-        $id = createPackage([['id' => $coco->id, 'quantity' => 8]], 'Antes')->json('data.id');
+    it('replaces notes and items, counting its own reservation as free', function () {
+        [$coco, $cake] = seedPackageStock();
+        $id = postPackage([['product_id' => $coco->id, 'quantity' => 8]], 'Antes')->json('data.id');
 
-        $this->putJson("/api/delivery-packages/{$id}", ['items' => [['id' => $coco->id, 'quantity' => 10], ['id' => $morango->id, 'quantity' => 1]], 'notes' => 'Depois'])
+        $this->putJson("/api/delivery-packages/{$id}", ['items' => [['product_id' => $coco->id, 'quantity' => 10], ['product_id' => $cake->id, 'quantity' => 3]], 'notes' => 'Depois'])
             ->assertOk()
             ->assertJsonPath('message.pt-br', 'Pacote atualizado com sucesso.')
             ->assertJsonPath('data.notes', 'Depois')
-            ->assertJsonPath('data.items.0.quantity', '10.0000')
-            ->assertJsonPath('data.items.1.id', $morango->id);
+            ->assertJsonPath('data.items.0.quantity', '3.0000')
+            ->assertJsonPath('data.items.1.quantity', '10.0000');
 
-        $this->putJson("/api/delivery-packages/{$id}", ['items' => [['id' => $morango->id, 'quantity' => 2]]])
+        $this->putJson("/api/delivery-packages/{$id}", ['items' => [['product_id' => $cake->id, 'quantity' => 1]]])
             ->assertOk()
-            ->assertJsonPath('data.notes', null);
+            ->assertJsonPath('data.notes', null)
+            ->assertJsonPath('data.items.0.allocations.0.code', 'BOLO-0002');
 
-        expect(stockByName())->toBe([
-            'Dindin de coco' => ['10.0000', '0.0000'],
-            'Dindin de morango' => ['5.0000', '2.0000'],
+        expect(productStock())->toBe([
+            'Bolo' => ['3.0000', '1.0000'],
+            'Coco ralado' => ['10.0000', '0.0000'],
         ]);
     });
 
     it('rejects more than the free stock and keeps the package', function () {
-        [$coco] = seedDindins('10');
-        createPackage([['id' => $coco->id, 'quantity' => 6]]);
-        $id = createPackage([['id' => $coco->id, 'quantity' => 1]], 'Original')->json('data.id');
+        [$coco] = seedPackageStock();
+        postPackage([['product_id' => $coco->id, 'quantity' => 6]]);
+        $id = postPackage([['product_id' => $coco->id, 'quantity' => 1]], 'Original')->json('data.id');
 
-        $this->putJson("/api/delivery-packages/{$id}", ['items' => [['id' => $coco->id, 'quantity' => 5]], 'notes' => 'Novo'])
+        $this->putJson("/api/delivery-packages/{$id}", ['items' => [['product_id' => $coco->id, 'quantity' => 5]], 'notes' => 'Novo'])
             ->assertUnprocessable()
-            ->assertJsonPath('message.en-us', 'Not enough free stock of "Dindin de coco" to package. Required: 5, Available: 4.');
+            ->assertJsonPath('message.en-us', 'Not enough free stock of "Coco ralado" to package. Required: 5, Available: 4.');
 
         $this->getJson("/api/delivery-packages/{$id}")
             ->assertJsonPath('data.notes', 'Original')
@@ -223,74 +291,77 @@ describe('PUT /api/delivery-packages/{delivery_package_id}', function () {
     });
 
     it('does not edit a delivered package', function () {
-        [$coco] = seedDindins();
+        [$coco] = seedPackageStock();
         $package = DeliveryPackage::factory()->delivered()->create();
 
-        $this->putJson("/api/delivery-packages/{$package->id}", ['items' => [['id' => $coco->id, 'quantity' => 1]]])
+        $this->putJson("/api/delivery-packages/{$package->id}", ['items' => [['product_id' => $coco->id, 'quantity' => 1]]])
             ->assertUnprocessable()
             ->assertJsonPath('message.pt-br', 'Este pacote já foi entregue.');
     });
 
     it('returns 404 for an unknown package', function () {
-        [$coco] = seedDindins();
+        [$coco] = seedPackageStock();
 
-        $this->putJson('/api/delivery-packages/404', ['items' => [['id' => $coco->id, 'quantity' => 1]]])
+        $this->putJson('/api/delivery-packages/404', ['items' => [['product_id' => $coco->id, 'quantity' => 1]]])
             ->assertNotFound()
             ->assertJsonPath('message.pt-br', 'Pacote não encontrado.');
     });
 
     it('returns 500 when the database fails', function () {
-        [$coco] = seedDindins();
+        [$coco] = seedPackageStock();
         $package = DeliveryPackage::factory()->create();
         failTable('delivery_package_has_item');
 
-        $this->putJson("/api/delivery-packages/{$package->id}", ['items' => [['id' => $coco->id, 'quantity' => 1]]])
+        $this->putJson("/api/delivery-packages/{$package->id}", ['items' => [['product_id' => $coco->id, 'quantity' => 1]]])
             ->assertInternalServerError()
             ->assertJsonPath('message.en-us', 'Error updating package.');
     });
 });
 
 describe('POST /api/delivery-packages/{delivery_package_id}/deliver', function () {
-    it('subtracts the items from the stock and marks the package as delivered', function () {
-        [$coco, $morango] = seedDindins('10', '5');
-        $id = createPackage([['id' => $coco->id, 'quantity' => 3], ['id' => $morango->id, 'quantity' => 2.5]])->json('data.id');
-        createPackage([['id' => $coco->id, 'quantity' => 1]]);
+    it('removes atomic items, subtracts bulk lots and keeps the delivered codes', function () {
+        [$coco, $cake] = seedPackageStock();
+        $id = postPackage([['product_id' => $coco->id, 'quantity' => 7], ['product_id' => $cake->id, 'quantity' => 2]])->json('data.id');
+        postPackage([['product_id' => $coco->id, 'quantity' => 1]]);
 
         $this->postJson("/api/delivery-packages/{$id}/deliver")
             ->assertOk()
             ->assertJsonPath('message.pt-br', 'Pacote entregue. Os itens foram subtraídos do estoque.')
             ->assertJsonPath('data.status', 'delivered')
-            ->assertJsonPath('data.items.0.current_quantity', '7.0000');
+            ->assertJsonPath('data.items.0.stock_quantity', '1.0000')
+            ->assertJsonPath('data.items.0.allocations.0', ['item_id' => null, 'code' => 'BOLO-0002', 'quantity' => '1.0000'])
+            ->assertJsonPath('data.items.1.stock_quantity', '3.0000');
 
         expect(DeliveryPackage::find($id)->delivered_at)->not->toBeNull()
-            ->and(stockByName())->toBe([
-                'Dindin de coco' => ['7.0000', '1.0000'],
-                'Dindin de morango' => ['2.5000', '0.0000'],
+            ->and(itemStock())->toBe([
+                'BOLO-0003' => ['1.0000', '0.0000'],
+                'COCO-L2' => ['0.0000', '0.0000'],
+                'COCO-L1' => ['3.0000', '1.0000'],
             ]);
     });
 
     it('does not deliver twice', function () {
-        [$coco] = seedDindins('10');
-        $id = createPackage([['id' => $coco->id, 'quantity' => 3]])->json('data.id');
+        [$coco] = seedPackageStock();
+        $id = postPackage([['product_id' => $coco->id, 'quantity' => 3]])->json('data.id');
         $this->postJson("/api/delivery-packages/{$id}/deliver")->assertOk();
 
         $this->postJson("/api/delivery-packages/{$id}/deliver")
             ->assertUnprocessable()
             ->assertJsonPath('message.en-us', 'This package has already been delivered.');
 
-        expect($coco->fresh()->quantity)->toBe('7.0000');
+        expect(productStock()['Coco ralado'])->toBe(['7.0000', '0.0000']);
     });
 
-    it('rolls back when the stock dropped after packaging', function () {
-        [$coco, $morango] = seedDindins('10', '5');
-        $id = createPackage([['id' => $coco->id, 'quantity' => 3], ['id' => $morango->id, 'quantity' => 4]])->json('data.id');
-        $this->patchJson("/api/inventory-items/{$morango->id}", ['quantity' => 1])->assertOk();
+    it('rolls back when a reserved lot no longer has the quantity', function () {
+        [$coco, $cake] = seedPackageStock();
+        $id = postPackage([['product_id' => $cake->id, 'quantity' => 1], ['product_id' => $coco->id, 'quantity' => 4]])->json('data.id');
+        DB::table('items')->where('code', 'COCO-L2')->update(['quantity' => '1']);
 
         $this->postJson("/api/delivery-packages/{$id}/deliver")
             ->assertUnprocessable()
-            ->assertJsonPath('message.pt-br', 'Estoque insuficiente de "Dindin de morango". Necessário: 4, Disponível: 1.');
+            ->assertJsonPath('message.pt-br', 'Estoque insuficiente de "Coco ralado". Necessário: 4, Disponível: 1.');
 
-        expect($coco->fresh()->quantity)->toBe('10.0000')
+        expect(Item::where('code', 'BOLO-0002')->exists())->toBeTrue()
             ->and(DeliveryPackage::find($id)->isDelivered())->toBeFalse();
     });
 
@@ -311,9 +382,9 @@ describe('POST /api/delivery-packages/{delivery_package_id}/deliver', function (
 });
 
 describe('DELETE /api/delivery-packages/{delivery_package_id}', function () {
-    it('deletes the package and its items without touching the stock', function () {
-        [$coco] = seedDindins('10');
-        $id = createPackage([['id' => $coco->id, 'quantity' => 3]])->json('data.id');
+    it('deletes the package and frees the reservation without touching the stock', function () {
+        [$coco] = seedPackageStock();
+        $id = postPackage([['product_id' => $coco->id, 'quantity' => 3]])->json('data.id');
 
         $this->deleteJson("/api/delivery-packages/{$id}")
             ->assertOk()
@@ -321,7 +392,7 @@ describe('DELETE /api/delivery-packages/{delivery_package_id}', function () {
             ->assertJsonPath('data', null);
 
         expect(DB::table('delivery_package_has_item')->count())->toBe(0)
-            ->and(stockByName())->toBe(['Dindin de coco' => ['10.0000', '0.0000'], 'Dindin de morango' => ['5.0000', '0.0000']]);
+            ->and(productStock())->toBe(['Bolo' => ['3.0000', '0.0000'], 'Coco ralado' => ['10.0000', '0.0000']]);
     });
 
     it('returns 404 for an unknown package', function () {

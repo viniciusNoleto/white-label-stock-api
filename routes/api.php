@@ -3,8 +3,10 @@
 use App\Base\Traits\Response;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Delivery\DeliveryPackageController;
-use App\Http\Controllers\Inventory\InventoryItemController;
+use App\Http\Controllers\Inventory\ItemController;
 use App\Http\Controllers\Inventory\ItemCategoryController;
+use App\Http\Controllers\Inventory\ProductController;
+use App\Http\Controllers\Inventory\StockController;
 use App\Http\Controllers\Inventory\StorageController;
 use App\Http\Controllers\Inventory\UnitController;
 use App\Http\Controllers\User\RegistrationRequestController;
@@ -43,14 +45,21 @@ Route::middleware('auth')->group(function () {
         Route::delete('{storage_id}', [StorageController::class, 'destroy'])->name('storages.destroy');
     });
 
-    Route::prefix('inventory-items')->group(function () {
-        Route::get('', [InventoryItemController::class, 'index'])->name('inventory-items.index');
-        Route::post('', [InventoryItemController::class, 'store'])->name('inventory-items.store');
-        Route::prefix('{inventory_item_id}')->group(function () {
-            Route::patch('', [InventoryItemController::class, 'update'])->name('inventory-items.update');
-            Route::post('build', [InventoryItemController::class, 'build'])->name('inventory-items.build');
-        });
+    Route::prefix('products')->group(function () {
+        Route::get('', [ProductController::class, 'index'])->name('products.index');
+        Route::post('', [ProductController::class, 'store'])->name('products.store');
+        Route::put('{product_id}', [ProductController::class, 'update'])->name('products.update');
+        Route::delete('{product_id}', [ProductController::class, 'destroy'])->name('products.destroy');
     });
+
+    Route::prefix('items')->group(function () {
+        Route::get('', [ItemController::class, 'index'])->name('items.index');
+        Route::post('', [ItemController::class, 'store'])->name('items.store');
+        Route::patch('{item_id}', [ItemController::class, 'update'])->name('items.update');
+        Route::delete('{item_id}', [ItemController::class, 'destroy'])->name('items.destroy');
+    });
+
+    Route::get('stock', [StockController::class, 'index'])->name('stock.index');
 
     Route::prefix('delivery-packages')->group(function () {
         Route::get('', [DeliveryPackageController::class, 'index'])->name('delivery-packages.index');

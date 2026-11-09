@@ -1,6 +1,6 @@
 <?php
 
-use App\Models\Inventory\InventoryItem;
+use App\Models\Inventory\Product;
 use App\Models\Inventory\Unit;
 
 beforeEach(function () {
@@ -127,11 +127,11 @@ describe('DELETE /api/units/{unit_id}', function () {
 
     it('returns 409 while the unit is used by an item', function () {
         $unit = Unit::factory()->create();
-        InventoryItem::factory()->create(['unit_id' => $unit->id]);
+        Product::factory()->create(['unit_id' => $unit->id]);
 
         $this->deleteJson("/api/units/{$unit->id}")
             ->assertConflict()
-            ->assertJsonPath('message.en-us', 'This unit is in use by inventory items.');
+            ->assertJsonPath('message.en-us', 'This unit is in use by products.');
     });
 
     it('returns 500 when the database fails', function () {

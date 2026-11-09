@@ -9,13 +9,14 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 final class ListDeliveryPackagesQuery {
 
     /**
-     * Itens carregados em toda resposta de pacote (ordenados por nome, com unidade).
+     * Linhas (itens reservados) carregadas em toda resposta de pacote, com o produto, a unidade e o estoque dele.
      *
      * @return array<string|int, mixed>
      */
     public static function relations(): array {
         return [
-            'items' => fn($query) => $query->with('unit')->orderBy('name')->orderBy('inventory_items.id'),
+            'lines' => fn($query) => $query->orderBy('id'),
+            'lines.product' => fn($query) => $query->withStock()->with('unit'),
         ];
     }
 

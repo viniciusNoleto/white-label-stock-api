@@ -1,6 +1,6 @@
 <?php
 
-use App\Models\Inventory\InventoryItem;
+use App\Models\Inventory\Product;
 use App\Models\Inventory\ItemCategory;
 
 beforeEach(function () {
@@ -93,10 +93,10 @@ describe('DELETE /api/item-categories/{item_category_id}', function () {
 
     it('returns 409 while the category is linked to an item', function () {
         $category = ItemCategory::factory()->create();
-        InventoryItem::factory()->create()->categories()->attach($category->id);
+        Product::factory()->create()->categories()->attach($category->id);
 
         $this->deleteJson("/api/item-categories/{$category->id}")
             ->assertConflict()
-            ->assertJsonPath('message.en-us', 'This category is in use by inventory items.');
+            ->assertJsonPath('message.en-us', 'This category is in use by products.');
     });
 });

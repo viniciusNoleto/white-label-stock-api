@@ -2,10 +2,11 @@
 
 namespace App\Actions\Delivery\DeliveryPackage;
 
+use App\Actions\Inventory\Item\ConsumeItemStockAction;
 use App\Enum\Delivery\DeliveryPackageStatusEnum;
 use App\Exceptions\ApiException;
 use App\Models\Delivery\DeliveryPackage;
-use App\Models\Inventory\InventoryItem;
+use App\Models\Inventory\Item;
 use App\Queries\Delivery\ListDeliveryPackagesQuery;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
@@ -17,10 +18,15 @@ final class DeliverDeliveryPackageAction {
 
     private const NOT_FOUND = 'messages.delivery_packages.not_found';
 
+    public function __construct(
+        private readonly ConsumeItemStockAction $consume,
+    ) {
+    }
+
     /**
-     * Marca o pacote como entregue e subtrai os itens do estoque. Pacote e itens ficam travados
-     * até o fim da transação: o mesmo pacote não é entregue duas vezes e o saldo nunca fica
-     * negativo. Falta de estoque (ex.: subtraído manualmente depois de empacotar) desfaz tudo.
+     * Marca o pacote como entregue e tira do estoque os itens reservados (atômicos saem do
+     * estoque; lotes a granel têm a quantidade subtraída). Pacote e itens ficam travados até o
+     * fim da transação: o mesmo pacote não é entregue duas vezes e o saldo nunca fica negativo.
      *
      * @param mixed $id
      * @return DeliveryPackage
@@ -37,30 +43,28 @@ final class DeliverDeliveryPackageAction {
                 throw new ApiException('messages.delivery_packages.already_delivered');
             }
 
-            $lines = DB::table('delivery_package_has_item')
-                ->where('delivery_package_id', $package->id)
-                ->get(['inventory_item_id', 'quantity']);
+            $lines = $package->lines()->with('product')->orderBy('id')->get();
 
             // Sempre na mesma ordem (id), evitando deadlock entre operações simultâneas.
-            $stock = InventoryItem::query()
-                ->whereIn('id', $lines->pluck('inventory_item_id')->all())
+            $stock = Item::query()
+                ->whereIn('id', $lines->pluck('item_id')->filter()->all())
                 ->orderBy('id')
                 ->lockForUpdate()
                 ->get()
                 ->keyBy('id');
 
             foreach ($lines as $line) {
-                $current = $stock->get($line->inventory_item_id);
+                $item = $line->item_id ? $stock->get($line->item_id) : null;
 
-                if (bccomp($current->quantity, $line->quantity, self::SCALE) < 0) {
-                    throw new ApiException('messages.inventory_items.insufficient_stock', 422, [
-                        'name' => $current->name,
+                if (!$item || bccomp($item->quantity, $line->quantity, self::SCALE) < 0) {
+                    throw new ApiException('messages.items.insufficient_stock', 422, [
+                        'name' => $line->product->name,
                         'required' => format_decimal($line->quantity),
-                        'available' => format_decimal($current->quantity),
+                        'available' => format_decimal($item?->quantity ?? '0'),
                     ]);
                 }
 
-                InventoryItem::query()->whereKey($current->id)->decrement('quantity', $line->quantity);
+                $this->consume->handle($item, $line->product, $line->quantity);
             }
 
             $package->update([

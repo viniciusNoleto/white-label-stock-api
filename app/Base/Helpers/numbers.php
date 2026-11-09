@@ -33,3 +33,16 @@ if (!function_exists('format_decimal')) {
         return rtrim(rtrim($formatted, '0'), '.');
     }
 }
+
+if (!function_exists('is_whole_number')) {
+    /**
+     * Decimal (string) sem parte fracionária: `"3.0000"` → true, `"2.5000"` → false.
+     *
+     * @param string $value
+     * @param int $scale
+     * @return bool
+     */
+    function is_whole_number(string $value, int $scale = 4): bool {
+        return bccomp($value, bcadd($value, '0', 0), $scale) === 0;
+    }
+}

@@ -18,7 +18,7 @@ class Unit extends Model {
         'abbreviation',
     ];
 
-    public function inventoryItems(): HasMany {
-        return $this->hasMany(InventoryItem::class, 'unit_id', 'id');
+    public function products(): HasMany {
+        return $this->hasMany(Product::class, 'unit_id', 'id');
     }
 }
