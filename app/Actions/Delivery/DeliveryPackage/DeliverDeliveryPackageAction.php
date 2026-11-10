@@ -3,7 +3,9 @@
 namespace App\Actions\Delivery\DeliveryPackage;
 
 use App\Actions\Inventory\Item\ConsumeItemStockAction;
+use App\Actions\Inventory\StockMovement\RecordStockMovementsAction;
 use App\Enum\Delivery\DeliveryPackageStatusEnum;
+use App\Enum\Inventory\StockMovementTypeEnum;
 use App\Exceptions\ApiException;
 use App\Models\Delivery\DeliveryPackage;
 use App\Models\Inventory\Item;
@@ -19,13 +21,15 @@ final class DeliverDeliveryPackageAction {
     private const NOT_FOUND = 'messages.delivery_packages.not_found';
 
     public function __construct(
-        private readonly ConsumeItemStockAction $consume,
+        private readonly ConsumeItemStockAction     $consume,
+        private readonly RecordStockMovementsAction $recordMovements,
     ) {
     }
 
     /**
      * Marca o pacote como entregue e tira do estoque os itens reservados (atômicos saem do
-     * estoque; lotes a granel têm a quantidade subtraída). Pacote e itens ficam travados até o
+     * estoque; lotes a granel têm a quantidade subtraída), cada linha registrada como movimentação
+     * de entrega. Pacote e itens ficam travados até o
      * fim da transação: o mesmo pacote não é entregue duas vezes e o saldo nunca fica negativo.
      *
      * @param mixed $id
@@ -43,7 +47,7 @@ final class DeliverDeliveryPackageAction {
                 throw new ApiException('messages.delivery_packages.already_delivered');
             }
 
-            $lines = $package->lines()->with('product')->orderBy('id')->get();
+            $lines = $package->lines()->with('product.unit')->orderBy('id')->get();
 
             // Sempre na mesma ordem (id), evitando deadlock entre operações simultâneas.
             $stock = Item::query()
@@ -63,6 +67,13 @@ final class DeliverDeliveryPackageAction {
                         'available' => format_decimal($item?->quantity ?? '0'),
                     ]);
                 }
+
+                // Registra antes de consumir: o atômico é excluído no consumo.
+                $this->recordMovements->handle(StockMovementTypeEnum::DELIVERY, $line->product, [[
+                    'item' => $item,
+                    'quantity' => bcmul($line->quantity, '-1', self::SCALE),
+                    'balance' => bcsub($item->quantity, $line->quantity, self::SCALE),
+                ]], $package->id);
 
                 $this->consume->handle($item, $line->product, $line->quantity);
             }

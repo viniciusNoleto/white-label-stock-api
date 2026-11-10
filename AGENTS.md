@@ -22,15 +22,16 @@ routes/api.php → Controller → FormRequest → DTO → Action → Model (Eloq
 | Model | `app/Models/{Domínio}/` | `$table`, `$fillable`, `casts()`, relações e scopes. Scope: `#[Scope] protected function nome(Builder $query, …): void` com `@param Builder<self> $query` (nada de `scopeX($query)` sem tipo). Decimais saem como string (`"2.5000"`). Busca por id da rota: `use FindsOrFailsByKey` → `X::findOrFailByKey($id, 'messages.{recurso}.not_found')` (id inválido também vira 404). |
 | Resource | `app/Http/Resources/{Domínio}/` | Define o shape exato do JSON (snake_case, ordem das chaves). |
 | Enum | `app/Enum/{Domínio}/{Nome}Enum.php` | Backed enum para todo conjunto fixo de slugs. |
-| Helpers | `app/Base/Helpers/*.php` | Funções globais (autoload `files` no `composer.json`): `api_message`, `parse_id`, `format_decimal`, `hash_token`, `is_foreign_key_violation`. |
+| Helpers | `app/Base/Helpers/*.php` | Funções globais (autoload `files` no `composer.json`): `api_message`, `parse_id`, `parse_date`, `format_decimal`, `hash_token`, `is_foreign_key_violation`. |
 
 ## Domínio do estoque
 
 - **Produto** (`products`): o modelo — unidade, categorias, receita (`product_has_component`), `shelf_life_days` e `is_atomic`.
-- **Item** (`items`): registro físico com `code` único. Atômico → `quantity` = 1 (um item por unidade); a granel → um lote com quantidade. `expires_at` = `produced_at` + validade, gravado na criação.
-- Saída de estoque (consumo da receita e reserva em pacote) sempre por `AllocateProductStockAction`: só o livre (− reservado em pacotes pendentes), nunca vencido, em ordem FEFO, com os itens travados. `ConsumeItemStockAction` exclui o atômico e subtrai o lote.
+- **Item** (`items`): registro físico com `code` único, sempre gerado pela API (`{SKU}-0001`…) e nunca editável. Atômico → `quantity` = 1 (um item por unidade); a granel → um lote com quantidade. `expires_at` = `produced_at` + validade, gravado na criação.
+- Saída de estoque (consumo da receita e reserva em pacote) sempre por `AllocateProductStockAction`: só o livre (− reservado em pacotes pendentes), nunca vencido, em ordem FEFO, com os itens travados. No pacote, um produto atômico pode trazer `item_ids` (itens escolhidos um a um) → `AllocateSelectedItemsAction` (mesmas regras: livre, não vencido, travado). `ConsumeItemStockAction` exclui o atômico e subtrai o lote.
 - Pacote de entrega guarda linhas por item (`DeliveryPackageLine`, com `item_code`): o atômico entregue é excluído e a linha mantém o código.
 - Operação (`ListStockQuery`): atômicos agrupados por produto, lotes a granel um por linha.
+- Movimentações (`stock_movements`, `GET /api/stock-movements`): toda alteração de estoque grava uma linha via `RecordStockMovementsAction`, na mesma transação e **antes** de excluir o item — entrada/produção (`CreateItemsAction`), consumo da receita, ajuste e transferência (`UpdateItemAction`), entrega (`DeliverDeliveryPackageAction`) e baixa (`DeleteItemAction`). Reserva em pacote pendente não é movimentação. `quantity` com sinal, `balance` = saldo do item depois; código, nomes e usuário copiados na linha (FKs `nullOnDelete`). Operação nova que mexa em quantidade ou armazenamento de item precisa registrar também.
 
 ## Respostas (`App\Base\Traits\Response`)
 

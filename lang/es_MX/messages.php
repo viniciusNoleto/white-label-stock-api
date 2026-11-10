@@ -83,10 +83,8 @@ return [
         'product_required' => 'Selecciona el producto.',
         'invalid_quantity' => 'Cantidad inválida.',
         'invalid_date' => 'Fecha inválida. Usa el formato AAAA-MM-DD.',
-        'invalid_code' => 'Código inválido (hasta 80 caracteres).',
         'invalid_reference' => 'El producto o almacenamiento indicado no existe.',
         'code_taken' => 'Ya existe un artículo con este código.',
-        'code_single' => 'El código manual solo se puede usar al generar un único artículo.',
         'atomic_batch' => 'Los artículos atómicos se generan en cantidad entera, de 1 a :max por vez.',
         'atomic_integer' => '":name" se cuenta por unidad: usa una cantidad entera.',
         'atomic_quantity_locked' => 'Un artículo atómico es una sola unidad: para sacarlo del inventario, elimínalo.',
@@ -110,6 +108,10 @@ return [
         'fetch_error' => 'Error al obtener el inventario.',
     ],
 
+    'stock_movements' => [
+        'fetch_error' => 'Error al obtener los movimientos.',
+    ],
+
     'delivery_packages' => [
         'not_found' => 'Paquete no encontrado.',
         'invalid_items' => 'Seleccione al menos un producto, cada uno con una cantidad mayor que cero.',
@@ -117,6 +119,12 @@ return [
         'invalid_notes' => 'Las notas deben ser un texto de hasta 10000 caracteres.',
         'invalid_reference' => 'Algún producto informado no existe.',
         'insufficient_stock' => 'Existencias libres insuficientes de ":name" para empaquetar. Necesario: :required, Disponible: :available.',
+        'invalid_selection_ids' => 'Artículos elegidos inválidos.',
+        'invalid_selection' => 'Algún artículo elegido no existe o no es de ":name".',
+        'selection_atomic_only' => 'Solo los productos contados por unidad permiten elegir los artículos: ":name" es a granel.',
+        'selection_count' => 'La cantidad de ":name" (:quantity) no coincide con los artículos elegidos (:count).',
+        'selection_expired' => 'El artículo :code está vencido y no se puede empacar.',
+        'selection_reserved' => 'El artículo :code ya está reservado en otro paquete pendiente.',
         'already_delivered' => 'Este paquete ya fue entregado.',
         'created' => 'Paquete creado con éxito.',
         'updated' => 'Paquete actualizado con éxito.',

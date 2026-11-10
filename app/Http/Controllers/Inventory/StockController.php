@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Inventory;
 
 use App\Base\Http\Controllers\BaseController;
-use App\Data\Common\ListPageDTO;
+use App\Data\Inventory\Stock\ListStockDTO;
 use App\Http\Resources\Inventory\StockRowResource;
 use App\Queries\Inventory\ListStockQuery;
 use Exception;
@@ -22,7 +22,7 @@ class StockController extends BaseController {
      */
     public function index(Request $request, ListStockQuery $query) {
         try {
-            $dto = ListPageDTO::fromRequest($request);
+            $dto = ListStockDTO::fromRequest($request);
             $paginator = $query->get($dto);
 
             return self::successResponse(

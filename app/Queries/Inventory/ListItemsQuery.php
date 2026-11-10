@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Builder;
 final class ListItemsQuery {
 
     /**
-     * Itens por código, nome ou SKU do produto; filtros por produto, armazenamento e validade.
+     * Busca pelo código do item; filtros por produto, armazenamento, situação da validade e vencimento exato.
      * Ordem: produto, depois FEFO (vence primeiro), depois código.
      *
      * @param ListItemsDTO $dto
@@ -24,12 +24,10 @@ final class ListItemsQuery {
             ->withReservedQuantity()
             ->join('products', 'products.id', '=', 'items.product_id')
             ->with(['product.unit', 'storage'])
-            ->when($dto->search, fn(Builder $query, string $search) => $query->where(fn(Builder $query) => $query
-                ->whereLike('items.code', '%' . $search . '%')
-                ->orWhereLike('products.name', '%' . $search . '%')
-                ->orWhereLike('products.sku', '%' . $search . '%')))
+            ->when($dto->search, fn(Builder $query, string $search) => $query->whereLike('items.code', '%' . $search . '%'))
             ->when($dto->product_id, fn(Builder $query, int $id) => $query->where('items.product_id', $id))
             ->when($dto->storage_id, fn(Builder $query, int $id) => $query->where('items.storage_id', $id))
+            ->when($dto->expires_at, fn(Builder $query, string $date) => $query->whereDate('items.expires_at', $date))
             ->when($dto->expiration, fn(Builder $query, ItemExpirationFilterEnum $expiration) => match ($expiration) {
                 ItemExpirationFilterEnum::EXPIRED => $query->where('items.expires_at', '<', $today),
                 ItemExpirationFilterEnum::EXPIRING => $query->whereBetween('items.expires_at', [$today, now()->addDays(Item::EXPIRING_DAYS)->toDateString()]),

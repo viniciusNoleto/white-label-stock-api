@@ -18,8 +18,21 @@ describe('GET /api/units', function () {
             ->assertJsonPath('success', true)
             ->assertJsonPath('message.pt-br', 'Operação realizada com sucesso.');
 
-        expect(collect($response->json('data'))->pluck('name')->all())->toBe(['Grama', 'Metro'])
-            ->and(array_keys($response->json('data.0')))->toBe(['id', 'name', 'abbreviation', 'created_at', 'updated_at']);
+        expect(collect($response->json('data.items'))->pluck('name')->all())->toBe(['Grama', 'Metro'])
+            ->and(array_keys($response->json('data.items.0')))->toBe(['id', 'name', 'abbreviation', 'created_at', 'updated_at'])
+            ->and($response->json('data.meta'))->toBe(['page' => 1, 'per_page' => 8, 'total' => 2, 'last_page' => 1]);
+    });
+
+    it('paginates and clamps page/per_page', function () {
+        Unit::factory()->create(['name' => 'Grama']);
+        Unit::factory()->create(['name' => 'Litro']);
+        Unit::factory()->create(['name' => 'Metro']);
+
+        $page = $this->getJson('/api/units?page=2&per_page=2')->assertOk();
+
+        expect($page->json('data.meta'))->toBe(['page' => 2, 'per_page' => 2, 'total' => 3, 'last_page' => 2])
+            ->and(collect($page->json('data.items'))->pluck('name')->all())->toBe(['Metro'])
+            ->and($this->getJson('/api/units?page=0&per_page=500')->json('data.meta'))->toMatchArray(['page' => 1, 'per_page' => 100]);
     });
 
     it('returns 500 when the database fails', function () {
@@ -118,7 +131,7 @@ describe('DELETE /api/units/{unit_id}', function () {
             ->assertJsonPath('data', null)
             ->assertJsonPath('message.pt-br', 'Unidade excluída com sucesso.');
 
-        expect($this->getJson('/api/units')->json('data'))->toBeEmpty();
+        expect($this->getJson('/api/units')->json('data.items'))->toBeEmpty();
     });
 
     it('returns 404 for an unknown unit', function () {

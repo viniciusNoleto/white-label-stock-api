@@ -6,23 +6,42 @@ use App\Actions\Inventory\Storage\CreateStorageAction;
 use App\Actions\Inventory\Storage\DeleteStorageAction;
 use App\Actions\Inventory\Storage\UpdateStorageAction;
 use App\Base\Http\Controllers\BaseController;
+use App\Data\Common\ListPageDTO;
 use App\Data\Inventory\Storage\SaveStorageDTO;
 use App\Http\Requests\Storage\SaveStorageRequest;
 use App\Http\Resources\Inventory\StorageResource;
 use App\Models\Inventory\Storage;
 use Exception;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 class StorageController extends BaseController {
 
     /**
+     * Paginada (`page`, `per_page`), por nome.
+     *
+     * @param Request $request
      * @return JsonResponse|Response
      */
-    public function index() {
+    public function index(Request $request) {
         try {
+            $dto = ListPageDTO::fromRequest($request);
+            $paginator = Storage::query()
+                ->orderBy('name')
+                ->orderBy('id')
+                ->paginate(perPage: $dto->per_page, page: $dto->page);
+
             return self::successResponse(
-                data: StorageResource::collection(Storage::query()->orderBy('name')->orderBy('id')->get())
+                data: [
+                    'items' => StorageResource::collection($paginator->items()),
+                    'meta' => [
+                        'page' => $dto->page,
+                        'per_page' => $dto->per_page,
+                        'total' => $paginator->total(),
+                        'last_page' => max(1, $paginator->lastPage()),
+                    ],
+                ]
             );
         } catch (Exception $exception) {
             return self::returnError($exception, 'messages.storages.fetch_error');

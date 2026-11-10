@@ -14,8 +14,20 @@ describe('GET /api/item-categories', function () {
 
         $response = $this->getJson('/api/item-categories')->assertOk();
 
-        expect(collect($response->json('data'))->pluck('name')->all())->toBe(['Embalagens', 'Peças'])
-            ->and(array_keys($response->json('data.0')))->toBe(['id', 'name', 'color_hex', 'created_at', 'updated_at']);
+        expect(collect($response->json('data.items'))->pluck('name')->all())->toBe(['Embalagens', 'Peças'])
+            ->and(array_keys($response->json('data.items.0')))->toBe(['id', 'name', 'color_hex', 'created_at', 'updated_at'])
+            ->and($response->json('data.meta'))->toBe(['page' => 1, 'per_page' => 8, 'total' => 2, 'last_page' => 1]);
+    });
+
+    it('paginates with page/per_page', function () {
+        ItemCategory::factory()->create(['name' => 'Embalagens']);
+        ItemCategory::factory()->create(['name' => 'Ferramentas']);
+        ItemCategory::factory()->create(['name' => 'Peças']);
+
+        $page = $this->getJson('/api/item-categories?page=2&per_page=2')->assertOk();
+
+        expect($page->json('data.meta'))->toBe(['page' => 2, 'per_page' => 2, 'total' => 3, 'last_page' => 2])
+            ->and(collect($page->json('data.items'))->pluck('name')->all())->toBe(['Peças']);
     });
 
     it('returns 500 when the database fails', function () {

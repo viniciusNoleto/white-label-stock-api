@@ -30,7 +30,7 @@ describe('GET /api/users', function () {
         $response = $this->getJson('/api/users');
 
         $response->assertOk()
-            ->assertJsonPath('data.meta', ['page' => 1, 'per_page' => 15, 'total' => 3, 'last_page' => 1]);
+            ->assertJsonPath('data.meta', ['page' => 1, 'per_page' => 8, 'total' => 3, 'last_page' => 1]);
 
         expect(collect($response->json('data.items'))->pluck('name')->all())->toBe(['Zeca Admin', 'Ana', 'Bruno'])
             ->and($response->json('data.items.0.is_admin'))->toBeTrue()

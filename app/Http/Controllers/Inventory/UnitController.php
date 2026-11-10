@@ -6,23 +6,42 @@ use App\Actions\Inventory\Unit\CreateUnitAction;
 use App\Actions\Inventory\Unit\DeleteUnitAction;
 use App\Actions\Inventory\Unit\UpdateUnitAction;
 use App\Base\Http\Controllers\BaseController;
+use App\Data\Common\ListPageDTO;
 use App\Data\Inventory\Unit\SaveUnitDTO;
 use App\Http\Requests\Unit\SaveUnitRequest;
 use App\Http\Resources\Inventory\UnitResource;
 use App\Models\Inventory\Unit;
 use Exception;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 class UnitController extends BaseController {
 
     /**
+     * Paginada (`page`, `per_page`), por nome.
+     *
+     * @param Request $request
      * @return JsonResponse|Response
      */
-    public function index() {
+    public function index(Request $request) {
         try {
+            $dto = ListPageDTO::fromRequest($request);
+            $paginator = Unit::query()
+                ->orderBy('name')
+                ->orderBy('id')
+                ->paginate(perPage: $dto->per_page, page: $dto->page);
+
             return self::successResponse(
-                data: UnitResource::collection(Unit::query()->orderBy('name')->orderBy('id')->get())
+                data: [
+                    'items' => UnitResource::collection($paginator->items()),
+                    'meta' => [
+                        'page' => $dto->page,
+                        'per_page' => $dto->per_page,
+                        'total' => $paginator->total(),
+                        'last_page' => max(1, $paginator->lastPage()),
+                    ],
+                ]
             );
         } catch (Exception $exception) {
             return self::returnError($exception, 'messages.units.fetch_error');

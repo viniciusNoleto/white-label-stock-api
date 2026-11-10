@@ -7,6 +7,7 @@ use App\Http\Controllers\Inventory\ItemController;
 use App\Http\Controllers\Inventory\ItemCategoryController;
 use App\Http\Controllers\Inventory\ProductController;
 use App\Http\Controllers\Inventory\StockController;
+use App\Http\Controllers\Inventory\StockMovementController;
 use App\Http\Controllers\Inventory\StorageController;
 use App\Http\Controllers\Inventory\UnitController;
 use App\Http\Controllers\User\RegistrationRequestController;
@@ -60,6 +61,7 @@ Route::middleware('auth')->group(function () {
     });
 
     Route::get('stock', [StockController::class, 'index'])->name('stock.index');
+    Route::get('stock-movements', [StockMovementController::class, 'index'])->name('stock-movements.index');
 
     Route::prefix('delivery-packages')->group(function () {
         Route::get('', [DeliveryPackageController::class, 'index'])->name('delivery-packages.index');

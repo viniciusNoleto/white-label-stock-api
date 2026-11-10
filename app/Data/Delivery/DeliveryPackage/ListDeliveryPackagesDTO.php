@@ -8,7 +8,7 @@ use Spatie\LaravelData\Data;
 
 class ListDeliveryPackagesDTO extends Data {
 
-    public const DEFAULT_PER_PAGE = 15;
+    public const DEFAULT_PER_PAGE = 8;
 
     public const MAX_PER_PAGE = 100;
 
@@ -21,7 +21,7 @@ class ListDeliveryPackagesDTO extends Data {
 
     /**
      * `status` desconhecido é ignorado (lista todos); `page` inválido vira 1;
-     * `per_page` inválido vira 15 e é limitado a 1..100.
+     * `per_page` inválido vira 8 e é limitado a 1..100.
      *
      * @param Request $request
      * @return ListDeliveryPackagesDTO

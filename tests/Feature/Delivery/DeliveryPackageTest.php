@@ -151,6 +151,63 @@ describe('POST /api/delivery-packages', function () {
             ->assertJsonPath('message.pt-br', '"Bolo" é contado por unidade: use uma quantidade inteira.');
     });
 
+    it('packages exactly the atomic items chosen one by one instead of first-expiring-first', function () {
+        [$coco, $cake] = seedPackageStock();
+        $b1 = Item::where('code', 'BOLO-0001')->value('id');
+        $b3 = Item::where('code', 'BOLO-0003')->value('id');
+
+        $response = postPackage([['product_id' => $cake->id, 'quantity' => 2, 'item_ids' => [$b3, $b1]], ['product_id' => $coco->id, 'quantity' => 1]]);
+
+        $response->assertCreated();
+
+        expect(collect($response->json('data.items.0.allocations'))->pluck('code')->all())->toBe(['BOLO-0001', 'BOLO-0003'])
+            ->and(itemStock())->toMatchArray([
+                'BOLO-0002' => ['1.0000', '0.0000'],
+                'BOLO-0001' => ['1.0000', '1.0000'],
+                'BOLO-0003' => ['1.0000', '1.0000'],
+            ]);
+    });
+
+    it('rejects a chosen item that is not available and creates nothing', function (string $case, string $message) {
+        [$coco, $cake] = seedPackageStock();
+        $b2 = Item::where('code', 'BOLO-0002')->value('id');
+        $l1 = Item::where('code', 'COCO-L1')->value('id');
+
+        $items = match ($case) {
+            'reserved' => (function () use ($cake, $b2) {
+                postPackage([['product_id' => $cake->id, 'quantity' => 1]])->assertCreated();
+
+                return [['product_id' => $cake->id, 'quantity' => 1, 'item_ids' => [$b2]]];
+            })(),
+            'expired' => (function () use ($cake, $b2) {
+                Item::whereKey($b2)->update(['expires_at' => now()->subDay()->toDateString()]);
+
+                return [['product_id' => $cake->id, 'quantity' => 1, 'item_ids' => [$b2]]];
+            })(),
+            'other product' => [['product_id' => $cake->id, 'quantity' => 1, 'item_ids' => [$l1]]],
+            'unknown' => [['product_id' => $cake->id, 'quantity' => 1, 'item_ids' => [999]]],
+            'count' => [['product_id' => $cake->id, 'quantity' => 2, 'item_ids' => [$b2]]],
+            'bulk' => [['product_id' => $coco->id, 'quantity' => 1, 'item_ids' => [$l1]]],
+            'invalid ids' => [['product_id' => $cake->id, 'quantity' => 2, 'item_ids' => [$b2, $b2]]],
+        };
+
+        $before = DeliveryPackage::count();
+
+        postPackage($items)
+            ->assertUnprocessable()
+            ->assertJsonPath('message.en-us', $message);
+
+        expect(DeliveryPackage::count())->toBe($before);
+    })->with([
+        ['reserved', 'Item BOLO-0002 is already reserved in another pending package.'],
+        ['expired', 'Item BOLO-0002 is expired and cannot be packaged.'],
+        ['other product', 'A selected item does not exist or is not from "Bolo".'],
+        ['unknown', 'A selected item does not exist or is not from "Bolo".'],
+        ['count', 'The quantity of "Bolo" (2) does not match the selected items (1).'],
+        ['bulk', 'Only products counted by unit allow choosing the items: "Coco ralado" is bulk.'],
+        ['invalid ids', 'Invalid selected items.'],
+    ]);
+
     it('rejects invalid items', function (mixed $items) {
         seedPackageStock();
 
@@ -219,7 +276,7 @@ describe('GET /api/delivery-packages', function () {
 
         expect(collect($all['items'])->pluck('id')->all())->toBe([$new, $old->id])
             ->and($all['items'][0]['items'][0])->toMatchArray(['product_id' => $coco->id, 'quantity' => '2.0000'])
-            ->and($all['meta'])->toBe(['page' => 1, 'per_page' => 15, 'total' => 2, 'last_page' => 1])
+            ->and($all['meta'])->toBe(['page' => 1, 'per_page' => 8, 'total' => 2, 'last_page' => 1])
             ->and(collect($this->getJson('/api/delivery-packages?status=delivered')->json('data.items'))->pluck('id')->all())->toBe([$old->id])
             ->and(collect($this->getJson('/api/delivery-packages?status=PENDING')->json('data.items'))->pluck('id')->all())->toBe([$new])
             ->and($this->getJson('/api/delivery-packages?status=xyz')->json('data.meta.total'))->toBe(2)
@@ -274,6 +331,20 @@ describe('PUT /api/delivery-packages/{delivery_package_id}', function () {
             'Bolo' => ['3.0000', '1.0000'],
             'Coco ralado' => ['10.0000', '0.0000'],
         ]);
+    });
+
+    it('keeps or swaps the chosen items when editing, counting its own items as free', function () {
+        [, $cake] = seedPackageStock();
+        $b1 = Item::where('code', 'BOLO-0001')->value('id');
+        $b3 = Item::where('code', 'BOLO-0003')->value('id');
+        $id = postPackage([['product_id' => $cake->id, 'quantity' => 1, 'item_ids' => [$b3]]])->json('data.id');
+
+        $this->putJson("/api/delivery-packages/{$id}", ['items' => [['product_id' => $cake->id, 'quantity' => 2, 'item_ids' => [$b3, $b1]]]])
+            ->assertOk()
+            ->assertJsonPath('data.items.0.allocations.0.code', 'BOLO-0001')
+            ->assertJsonPath('data.items.0.allocations.1.code', 'BOLO-0003');
+
+        expect(productStock()['Bolo'])->toBe(['3.0000', '2.0000']);
     });
 
     it('rejects more than the free stock and keeps the package', function () {

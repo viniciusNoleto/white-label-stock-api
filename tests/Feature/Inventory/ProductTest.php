@@ -29,7 +29,7 @@ describe('GET /api/products', function () {
     it('returns an empty first page', function () {
         listProducts()
             ->assertOk()
-            ->assertJsonPath('data', ['items' => [], 'meta' => ['page' => 1, 'per_page' => 15, 'total' => 0, 'last_page' => 1]]);
+            ->assertJsonPath('data', ['items' => [], 'meta' => ['page' => 1, 'per_page' => 8, 'total' => 0, 'last_page' => 1]]);
     });
 
     it('returns products with unit, categories, recipe and stock summary', function () {

@@ -1,0 +1,230 @@
+<?php
+
+use App\Models\Delivery\DeliveryPackage;
+use App\Models\Delivery\DeliveryPackageLine;
+use App\Models\Inventory\Item;
+use App\Models\Inventory\Product;
+use App\Models\Inventory\StockMovement;
+use App\Models\Inventory\Storage;
+use App\Models\Inventory\Unit;
+use App\Models\User;
+use Illuminate\Support\Carbon;
+use Illuminate\Testing\TestResponse;
+
+beforeEach(function () {
+    $this->user = User::factory()->create(['name' => 'Ana']);
+    travelTo('2026-11-10 10:00:00');
+});
+
+afterEach(function () {
+    Carbon::setTestNow();
+});
+
+/**
+ * Muda o relógio e emite um token novo (o access token vale 15 min).
+ */
+function travelTo(string $now): void {
+    Carbon::setTestNow($now);
+    test()->withToken(accessToken(test()->user));
+}
+
+function listMovements(string $query = ''): TestResponse {
+    return test()->getJson("/api/stock-movements{$query}");
+}
+
+/**
+ * @return array<int, array<string, mixed>>
+ */
+function movementRows(): array {
+    return StockMovement::query()->orderBy('id')->get()
+        ->map(fn(StockMovement $movement) => [
+            'type' => $movement->type->value,
+            'item_code' => $movement->item_code,
+            'quantity' => $movement->quantity,
+            'balance' => $movement->balance,
+        ])->all();
+}
+
+describe('recording', function () {
+    it('records an entry for each generated item, with the author and a snapshot of the names', function () {
+        $storage = Storage::factory()->create(['name' => 'Depósito']);
+        $unit = Unit::factory()->create(['abbreviation' => 'un']);
+        $product = Product::factory()->create(['name' => 'Armário', 'sku' => 'ARM', 'unit_id' => $unit->id]);
+
+        $this->postJson('/api/items', ['product_id' => $product->id, 'quantity' => 2, 'storage_id' => $storage->id])->assertCreated();
+
+        expect(movementRows())->toBe([
+            ['type' => 'entry', 'item_code' => 'ARM-0001', 'quantity' => '1.0000', 'balance' => '1.0000'],
+            ['type' => 'entry', 'item_code' => 'ARM-0002', 'quantity' => '1.0000', 'balance' => '1.0000'],
+        ])->and(StockMovement::first()->only(['product_id', 'product_name', 'unit_abbreviation', 'storage_id', 'storage_name', 'user_id', 'user_name']))->toBe([
+            'product_id' => $product->id,
+            'product_name' => 'Armário',
+            'unit_abbreviation' => 'un',
+            'storage_id' => $storage->id,
+            'storage_name' => 'Depósito',
+            'user_id' => $this->user->id,
+            'user_name' => 'Ana',
+        ]);
+    });
+
+    it('records the production and the consumption of the recipe', function () {
+        $flour = Product::factory()->bulk()->create(['name' => 'Farinha']);
+        $egg = Product::factory()->create(['name' => 'Ovo']);
+        $cake = Product::factory()->create(['name' => 'Bolo', 'sku' => 'BOLO']);
+        $cake->components()->attach([$flour->id => ['quantity_required' => '0.5'], $egg->id => ['quantity_required' => '1']]);
+        Item::factory()->create(['product_id' => $flour->id, 'code' => 'FAR-1', 'quantity' => '3']);
+        $eggItem = Item::factory()->create(['product_id' => $egg->id, 'code' => 'OVO-1']);
+
+        $this->postJson('/api/items', ['product_id' => $cake->id, 'consume_components' => true])->assertCreated();
+
+        expect(movementRows())->toBe([
+            ['type' => 'consumption', 'item_code' => 'FAR-1', 'quantity' => '-0.5000', 'balance' => '2.5000'],
+            ['type' => 'consumption', 'item_code' => 'OVO-1', 'quantity' => '-1.0000', 'balance' => '0.0000'],
+            ['type' => 'production', 'item_code' => 'BOLO-0001', 'quantity' => '1.0000', 'balance' => '1.0000'],
+        ])
+            // O ovo (atômico) saiu do estoque: a movimentação fica com o código.
+            ->and(StockMovement::where('item_code', 'OVO-1')->value('item_id'))->toBeNull()
+            ->and(Item::find($eggItem->id))->toBeNull();
+    });
+
+    it('records nothing when the production fails', function () {
+        $flour = Product::factory()->bulk()->create();
+        $bread = Product::factory()->create();
+        $bread->components()->attach($flour->id, ['quantity_required' => '5']);
+        Item::factory()->create(['product_id' => $flour->id, 'quantity' => '1']);
+
+        $this->postJson('/api/items', ['product_id' => $bread->id, 'consume_components' => true])->assertUnprocessable();
+
+        expect(StockMovement::count())->toBe(0);
+    });
+
+    it('records quantity adjustments with the signed difference and transfers between storages', function () {
+        $from = Storage::factory()->create(['name' => 'A']);
+        $to = Storage::factory()->create(['name' => 'B']);
+        $item = Item::factory()->create(['product_id' => Product::factory()->bulk(), 'code' => 'LOTE', 'quantity' => '10', 'storage_id' => $from->id]);
+
+        $this->patchJson("/api/items/{$item->id}", ['quantity_subtract' => 2.5])->assertOk();
+        $this->patchJson("/api/items/{$item->id}", ['quantity' => 20])->assertOk();
+        $this->patchJson("/api/items/{$item->id}", ['storage_id' => $to->id])->assertOk();
+        $this->patchJson("/api/items/{$item->id}", ['produced_at' => '2026-11-01'])->assertOk();
+
+        expect(movementRows())->toBe([
+            ['type' => 'adjustment', 'item_code' => 'LOTE', 'quantity' => '-2.5000', 'balance' => '7.5000'],
+            ['type' => 'adjustment', 'item_code' => 'LOTE', 'quantity' => '12.5000', 'balance' => '20.0000'],
+            ['type' => 'transfer', 'item_code' => 'LOTE', 'quantity' => '0.0000', 'balance' => '20.0000'],
+        ])->and(StockMovement::where('type', 'transfer')->first()->only(['storage_id', 'storage_name', 'previous_storage_name']))->toBe([
+            'storage_id' => $to->id,
+            'storage_name' => 'B',
+            'previous_storage_name' => 'A',
+        ]);
+    });
+
+    it('does not record an adjustment that keeps the same quantity', function () {
+        $item = Item::factory()->create(['product_id' => Product::factory()->bulk(), 'quantity' => '4']);
+
+        $this->patchJson("/api/items/{$item->id}", ['quantity' => 4])->assertOk();
+
+        expect(StockMovement::count())->toBe(0);
+    });
+
+    it('records a write-off when an item is deleted', function () {
+        $item = Item::factory()->create(['product_id' => Product::factory()->bulk(), 'code' => 'LOTE', 'quantity' => '3']);
+
+        $this->deleteJson("/api/items/{$item->id}")->assertOk();
+
+        expect(movementRows())->toBe([
+            ['type' => 'write_off', 'item_code' => 'LOTE', 'quantity' => '-3.0000', 'balance' => '0.0000'],
+        ]);
+    });
+
+    it('records the delivery of each line of the package, with the package id', function () {
+        $sugar = Product::factory()->bulk()->create();
+        $lot = Item::factory()->create(['product_id' => $sugar->id, 'code' => 'ACU', 'quantity' => '5']);
+        $chair = Item::factory()->create(['code' => 'CAD-1']);
+        $package = DeliveryPackage::factory()->create();
+
+        foreach ([[$lot, '2'], [$chair, '1']] as [$item, $quantity]) {
+            DeliveryPackageLine::create([
+                'delivery_package_id' => $package->id,
+                'product_id' => $item->product_id,
+                'item_id' => $item->id,
+                'item_code' => $item->code,
+                'quantity' => $quantity,
+            ]);
+        }
+
+        $this->postJson("/api/delivery-packages/{$package->id}/deliver")->assertOk();
+
+        expect(movementRows())->toBe([
+            ['type' => 'delivery', 'item_code' => 'ACU', 'quantity' => '-2.0000', 'balance' => '3.0000'],
+            ['type' => 'delivery', 'item_code' => 'CAD-1', 'quantity' => '-1.0000', 'balance' => '0.0000'],
+        ])->and(StockMovement::pluck('delivery_package_id')->unique()->all())->toBe([$package->id]);
+    });
+
+    it('does not record reservations in pending packages', function () {
+        $item = Item::factory()->create();
+
+        $this->postJson('/api/delivery-packages', ['items' => [['product_id' => $item->product_id, 'quantity' => 1]]])->assertCreated();
+
+        expect(StockMovement::count())->toBe(0);
+    });
+});
+
+describe('GET /api/stock-movements', function () {
+    it('lists the most recent first, with the exact shape', function () {
+        $product = Product::factory()->create(['sku' => 'X']);
+        $this->postJson('/api/items', ['product_id' => $product->id])->assertCreated();
+        travelTo('2026-11-10 11:00:00');
+        $this->deleteJson('/api/items/' . Item::first()->id)->assertOk();
+
+        $response = listMovements()->assertOk()
+            ->assertJsonPath('data.meta', ['page' => 1, 'per_page' => 8, 'total' => 2, 'last_page' => 1]);
+
+        expect(array_keys($response->json('data.items.0')))->toBe([
+            'id', 'type', 'item_id', 'item_code', 'product_id', 'product_name', 'unit_abbreviation', 'quantity', 'balance',
+            'storage_id', 'storage_name', 'previous_storage_name', 'delivery_package_id', 'user_id', 'user_name', 'created_at',
+        ])
+            ->and(collect($response->json('data.items'))->pluck('type')->all())->toBe(['write_off', 'entry'])
+            ->and($response->json('data.items.0'))->toMatchArray(['item_id' => null, 'item_code' => 'X-0001', 'quantity' => '-1.0000']);
+    });
+
+    it('filters by search, type, product, storage and dates, and paginates', function () {
+        $storage = Storage::factory()->create();
+        $cake = Product::factory()->create(['name' => 'Bolo de cenoura', 'sku' => 'BOLO']);
+        $chair = Product::factory()->create(['name' => 'Cadeira', 'sku' => 'CAD']);
+
+        travelTo('2026-11-08 09:00:00');
+        $this->postJson('/api/items', ['product_id' => $cake->id, 'quantity' => 3])->assertCreated();
+        travelTo('2026-11-10 09:00:00');
+        $this->postJson('/api/items', ['product_id' => $chair->id, 'storage_id' => $storage->id])->assertCreated();
+        $this->deleteJson('/api/items/' . Item::where('code', 'BOLO-0001')->value('id'))->assertOk();
+
+        $codes = fn(string $query) => collect(listMovements($query)->assertOk()->json('data.items'))
+            ->map(fn(array $row) => "{$row['type']}:{$row['item_code']}")->all();
+
+        expect($codes('?search=cenoura&type=entry'))->toBe(['entry:BOLO-0003', 'entry:BOLO-0002', 'entry:BOLO-0001'])
+            ->and($codes('?search=cad-0'))->toBe(['entry:CAD-0001'])
+            ->and($codes('?type=write_off'))->toBe(['write_off:BOLO-0001'])
+            ->and($codes("?product_id={$chair->id}"))->toBe(['entry:CAD-0001'])
+            ->and($codes("?storage_id={$storage->id}"))->toBe(['entry:CAD-0001'])
+            ->and($codes('?date_from=2026-11-08&date_to=2026-11-08'))->toBe(['entry:BOLO-0003', 'entry:BOLO-0002', 'entry:BOLO-0001'])
+            ->and($codes('?date_from=2026-11-09'))->toBe(['write_off:BOLO-0001', 'entry:CAD-0001'])
+            ->and($codes('?type=nope&date_from=ontem'))->toHaveCount(5);
+
+        listMovements('?per_page=2&page=3')
+            ->assertJsonPath('data.meta', ['page' => 3, 'per_page' => 2, 'total' => 5, 'last_page' => 3])
+            ->assertJsonCount(1, 'data.items');
+    });
+
+    it('requires a session', function () {
+        $this->withToken('invalid');
+
+        listMovements()->assertUnauthorized();
+    });
+
+    it('returns 500 when the database fails', function () {
+        failTable('stock_movements');
+
+        listMovements()->assertStatus(500)->assertJsonPath('message.pt-br', 'Erro ao buscar as movimentações.');
+    });
+});

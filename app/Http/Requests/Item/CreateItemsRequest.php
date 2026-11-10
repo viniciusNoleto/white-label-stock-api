@@ -7,6 +7,8 @@ use App\Http\Requests\BaseRequest;
 class CreateItemsRequest extends BaseRequest {
 
     /**
+     * Sem `code`: o código do item é sempre gerado pela API (`{SKU}-0001`…).
+     *
      * @return array<string, mixed>
      */
     public function rules(): array {
@@ -15,7 +17,6 @@ class CreateItemsRequest extends BaseRequest {
             'quantity' => 'nullable|numeric|gt:0',
             'produced_at' => 'nullable|date_format:Y-m-d',
             'storage_id' => 'nullable',
-            'code' => 'nullable|string|max:80',
             'consume_components' => 'nullable|boolean',
         ];
     }
@@ -28,7 +29,6 @@ class CreateItemsRequest extends BaseRequest {
             'product_id.*' => 'messages.items.product_required',
             'quantity.*' => 'messages.items.invalid_quantity',
             'produced_at.*' => 'messages.items.invalid_date',
-            'code.*' => 'messages.items.invalid_code',
         ];
     }
 }

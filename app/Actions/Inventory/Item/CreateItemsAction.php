@@ -2,7 +2,9 @@
 
 namespace App\Actions\Inventory\Item;
 
+use App\Actions\Inventory\StockMovement\RecordStockMovementsAction;
 use App\Data\Inventory\Item\CreateItemsDTO;
+use App\Enum\Inventory\StockMovementTypeEnum;
 use App\Exceptions\ApiException;
 use App\Models\Inventory\Item;
 use App\Models\Inventory\Product;
@@ -22,15 +24,18 @@ final class CreateItemsAction {
     public function __construct(
         private readonly AllocateProductStockAction $allocate,
         private readonly ConsumeItemStockAction     $consume,
+        private readonly RecordStockMovementsAction $recordMovements,
     ) {
     }
 
     /**
      * Gera itens de um produto (produção ou entrada no estoque).
      * Atômico: `quantity` itens, cada um com código próprio (`{SKU}-0001`…) — produção em lote.
+     * O código é sempre gerado aqui (nunca vem do cliente).
      * A granel: um registro (lote) com a `quantity`.
      * Vencimento = `produced_at` + validade do produto. Com `consume_components`, a receita sai do
      * estoque (FEFO) na mesma transação: faltou componente, nada é gravado.
+     * Cada item gerado vira uma movimentação de entrada (ou produção) e cada componente gasto, uma de consumo.
      *
      * @param CreateItemsDTO $dto
      * @return Collection<int, Item>
@@ -51,7 +56,7 @@ final class CreateItemsAction {
 
                 $produced_at = Carbon::parse($dto->produced_at)->startOfDay();
                 $expires_at = $product->shelf_life_days ? $produced_at->copy()->addDays($product->shelf_life_days) : null;
-                $codes = $dto->code !== null ? [$dto->code] : $this->nextCodes($product, $count);
+                $codes = $this->nextCodes($product, $count);
                 $now = now();
 
                 Item::query()->insert(array_map(fn(string $code) => [
@@ -65,12 +70,20 @@ final class CreateItemsAction {
                     'updated_at' => $now,
                 ], $codes));
 
-                return Item::query()
+                $items = Item::query()
                     ->withReservedQuantity()
                     ->with(['product.unit', 'storage'])
                     ->whereIn('code', $codes)
                     ->orderBy('id')
                     ->get();
+
+                $this->recordMovements->handle(
+                    $dto->consume_components ? StockMovementTypeEnum::PRODUCTION : StockMovementTypeEnum::ENTRY,
+                    $product,
+                    $items->map(fn(Item $item) => ['item' => $item, 'quantity' => $item->quantity, 'balance' => $item->quantity])->all(),
+                );
+
+                return $items;
             });
         } catch (QueryException $exception) {
             if (is_foreign_key_violation($exception)) {
@@ -102,13 +115,7 @@ final class CreateItemsAction {
             throw new ApiException('messages.items.atomic_batch', 422, ['max' => self::MAX_BATCH]);
         }
 
-        $count = (int)$dto->quantity;
-
-        if ($dto->code !== null && $count > 1) {
-            throw new ApiException('messages.items.code_single');
-        }
-
-        return $count;
+        return (int)$dto->quantity;
     }
 
     /**
@@ -129,14 +136,23 @@ final class CreateItemsAction {
         foreach ($components as $component) {
             $required = bcmul($component->pivot->quantity_required, $quantity, self::SCALE);
 
-            foreach ($this->allocate->handle($component, $required) as $allocation) {
+            $allocations = $this->allocate->handle($component, $required);
+
+            // Registra antes de consumir: o atômico é excluído no consumo.
+            $this->recordMovements->handle(StockMovementTypeEnum::CONSUMPTION, $component, array_map(fn(array $allocation) => [
+                'item' => $allocation['item'],
+                'quantity' => bcmul($allocation['quantity'], '-1', self::SCALE),
+                'balance' => bcsub($allocation['item']->quantity, $allocation['quantity'], self::SCALE),
+            ], $allocations));
+
+            foreach ($allocations as $allocation) {
                 $this->consume->handle($allocation['item'], $component, $allocation['quantity']);
             }
         }
     }
 
     /**
-     * Próximos códigos da sequência do produto, pulando os já usados (ex.: digitados à mão).
+     * Próximos códigos da sequência do produto, pulando os já usados (ex.: códigos antigos digitados à mão).
      *
      * @param Product $product
      * @param int $count

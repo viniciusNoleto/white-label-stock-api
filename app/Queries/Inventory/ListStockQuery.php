@@ -2,7 +2,7 @@
 
 namespace App\Queries\Inventory;
 
-use App\Data\Common\ListPageDTO;
+use App\Data\Inventory\Stock\ListStockDTO;
 use App\Models\Inventory\Item;
 use App\Models\Inventory\Product;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -13,14 +13,15 @@ use Illuminate\Support\Facades\DB;
  * Tela de operação: o estoque pronto para ler.
  * - Produto atômico → **uma linha por produto** (`kind = group`) somando os itens (4 armários = 1 linha com 4).
  * - Produto a granel → **uma linha por lote** (`kind = record`), com a quantidade dele (lotes zerados ficam de fora).
+ * Os filtros valem para os itens antes do agrupamento: a linha do produto soma só os itens que passaram.
  */
 final class ListStockQuery {
 
     /**
-     * @param ListPageDTO $dto
+     * @param ListStockDTO $dto
      * @return LengthAwarePaginator paginador de `['row' => object, 'product' => Product]`
      */
-    public function get(ListPageDTO $dto): LengthAwarePaginator {
+    public function get(ListStockDTO $dto): LengthAwarePaginator {
         $today = now()->toDateString();
 
         $groups = $this->base($dto)
@@ -77,12 +78,13 @@ final class ListStockQuery {
     }
 
     /**
-     * Itens com produto, armazenamento e o total reservado de cada um; busca por nome/SKU do produto ou código do item.
+     * Itens com produto, armazenamento e o total reservado de cada um; busca pelo nome ou SKU do produto,
+     * filtros por armazenamento e vencimento exato.
      *
-     * @param ListPageDTO $dto
+     * @param ListStockDTO $dto
      * @return Builder
      */
-    private function base(ListPageDTO $dto): Builder {
+    private function base(ListStockDTO $dto): Builder {
         $reserved = Item::reservedLinesQuery()
             ->groupBy('delivery_package_has_item.item_id')
             ->selectRaw('delivery_package_has_item.item_id, SUM(delivery_package_has_item.quantity) AS total');
@@ -91,9 +93,10 @@ final class ListStockQuery {
             ->join('products', 'products.id', '=', 'items.product_id')
             ->leftJoin('storages', 'storages.id', '=', 'items.storage_id')
             ->leftJoinSub($reserved, 'reserved', 'reserved.item_id', '=', 'items.id')
-            ->when($dto->search, fn(Builder $query, string $search) => $query->where(fn(Builder $query) => $query
+            ->when($dto->search, fn(Builder $query, string $search) => $query->where(fn(Builder $match) => $match
                 ->whereLike('products.name', '%' . $search . '%')
-                ->orWhereLike('products.sku', '%' . $search . '%')
-                ->orWhereLike('items.code', '%' . $search . '%')));
+                ->orWhereLike('products.sku', '%' . $search . '%')))
+            ->when($dto->storage_id, fn(Builder $query, int $id) => $query->where('items.storage_id', $id))
+            ->when($dto->expires_at, fn(Builder $query, string $date) => $query->whereDate('items.expires_at', $date));
     }
 }

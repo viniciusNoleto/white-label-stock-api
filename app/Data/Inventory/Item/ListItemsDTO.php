@@ -14,12 +14,14 @@ class ListItemsDTO extends Data {
         public ?int                      $product_id,
         public ?int                      $storage_id,
         public ?ItemExpirationFilterEnum $expiration,
+        public ?string                   $expires_at,
         public int                       $page,
         public int                       $per_page,
     ) {
     }
 
     /**
+     * `search` busca só no código do item; `expires_at` (`Y-m-d`) = vencimento exato.
      * Filtros inválidos são ignorados; paginação como em `ListPageDTO`.
      *
      * @param Request $request
@@ -34,6 +36,7 @@ class ListItemsDTO extends Data {
             product_id: parse_id($request->query('product_id')),
             storage_id: parse_id($request->query('storage_id')),
             expiration: is_string($expiration) ? ItemExpirationFilterEnum::tryFrom($expiration) : null,
+            expires_at: parse_date($request->query('expires_at')),
             page: $page->page,
             per_page: $page->per_page,
         );

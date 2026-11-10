@@ -83,10 +83,8 @@ return [
         'product_required' => 'Selecione o produto.',
         'invalid_quantity' => 'Quantidade inválida.',
         'invalid_date' => 'Data inválida. Use o formato AAAA-MM-DD.',
-        'invalid_code' => 'Código inválido (até 80 caracteres).',
         'invalid_reference' => 'Produto ou armazenamento informado não existe.',
         'code_taken' => 'Já existe um item com este código.',
-        'code_single' => 'Código manual só pode ser usado ao gerar um único item.',
         'atomic_batch' => 'Itens atômicos são gerados em quantidade inteira, de 1 a :max por vez.',
         'atomic_integer' => '":name" é contado por unidade: use uma quantidade inteira.',
         'atomic_quantity_locked' => 'Item atômico representa uma unidade: para tirar do estoque, exclua o item.',
@@ -110,6 +108,10 @@ return [
         'fetch_error' => 'Erro ao buscar o estoque.',
     ],
 
+    'stock_movements' => [
+        'fetch_error' => 'Erro ao buscar as movimentações.',
+    ],
+
     'delivery_packages' => [
         'not_found' => 'Pacote não encontrado.',
         'invalid_items' => 'Selecione ao menos um produto, cada um com quantidade maior que zero.',
@@ -117,6 +119,12 @@ return [
         'invalid_notes' => 'As anotações devem ser um texto de até 10000 caracteres.',
         'invalid_reference' => 'Algum produto informado não existe.',
         'insufficient_stock' => 'Estoque livre insuficiente de ":name" para empacotar. Necessário: :required, Disponível: :available.',
+        'invalid_selection_ids' => 'Itens escolhidos inválidos.',
+        'invalid_selection' => 'Algum item escolhido não existe ou não é de ":name".',
+        'selection_atomic_only' => 'Só produtos contados por unidade permitem escolher os itens: ":name" é a granel.',
+        'selection_count' => 'A quantidade de ":name" (:quantity) não bate com os itens escolhidos (:count).',
+        'selection_expired' => 'O item :code está vencido e não pode ser empacotado.',
+        'selection_reserved' => 'O item :code já está reservado em outro pacote pendente.',
         'already_delivered' => 'Este pacote já foi entregue.',
         'created' => 'Pacote criado com sucesso.',
         'updated' => 'Pacote atualizado com sucesso.',

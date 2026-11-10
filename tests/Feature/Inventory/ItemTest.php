@@ -76,9 +76,9 @@ describe('POST /api/items', function () {
         generateItems(['product_id' => $cake->id, 'quantity' => 2])->assertJsonPath('data.items.1.code', sprintf('P%d-0010', $cake->id));
     });
 
-    it('skips codes already used manually', function () {
+    it('skips codes already in use', function () {
         $product = Product::factory()->create(['sku' => 'X']);
-        generateItems(['product_id' => $product->id, 'code' => 'X-0002'])->assertCreated();
+        Item::factory()->create(['product_id' => $product->id, 'code' => 'X-0002']);
 
         $codes = collect(generateItems(['product_id' => $product->id, 'quantity' => 2])->json('data.items'))->pluck('code')->all();
 
@@ -95,17 +95,14 @@ describe('POST /api/items', function () {
             ->assertJsonPath('data.items.0.quantity', '1500.5000');
     });
 
-    it('rejects a manual code for a batch and a repeated code', function () {
-        $product = Product::factory()->create();
-        Item::factory()->create(['code' => 'DUP']);
+    it('ignores a code sent by the client: codes are always generated', function () {
+        $product = Product::factory()->create(['sku' => 'GEN']);
 
-        generateItems(['product_id' => $product->id, 'quantity' => 2, 'code' => 'A1'])
-            ->assertUnprocessable()
-            ->assertJsonPath('message.en-us', 'A manual code can only be used when generating a single item.');
+        generateItems(['product_id' => $product->id, 'code' => 'MANUAL'])
+            ->assertCreated()
+            ->assertJsonPath('data.items.0.code', 'GEN-0001');
 
-        generateItems(['product_id' => $product->id, 'code' => 'DUP'])
-            ->assertUnprocessable()
-            ->assertJsonPath('message.pt-br', 'Já existe um item com este código.');
+        expect(Item::where('code', 'MANUAL')->exists())->toBeFalse();
     });
 
     it('only generates whole batches of atomic items, up to the limit', function (mixed $quantity) {
@@ -250,7 +247,7 @@ describe('GET /api/items', function () {
             ]);
     });
 
-    it('filters by search, product, storage and expiration', function () {
+    it('filters by code, product, storage, expiration and exact expiration date', function () {
         $storage = Storage::factory()->create();
         $cake = Product::factory()->create(['name' => 'Bolo de chocolate', 'sku' => 'CHOC']);
         $pie = Product::factory()->create(['name' => 'Torta']);
@@ -262,8 +259,12 @@ describe('GET /api/items', function () {
 
         $codes = fn(string $query) => collect(listStockItems($query)->json('data.items'))->pluck('code')->all();
 
-        expect($codes('?search=choc'))->toBe(['EXPIRED', 'TODAY'])
+        expect($codes('?search=choc'))->toBe([])
             ->and($codes('?search=week'))->toBe(['WEEK'])
+            ->and($codes('?search=late'))->toBe(['LATER'])
+            ->and($codes('?expires_at=2026-11-16'))->toBe(['WEEK'])
+            ->and($codes("?product_id={$cake->id}&expires_at=2026-11-09"))->toBe(['TODAY'])
+            ->and(count($codes('?expires_at=2026-02-30')))->toBe(5)
             ->and($codes("?product_id={$pie->id}"))->toBe(['WEEK', 'LATER', 'NEVER'])
             ->and($codes("?storage_id={$storage->id}"))->toBe(['TODAY'])
             ->and($codes('?expiration=expired'))->toBe(['EXPIRED'])
@@ -282,15 +283,15 @@ describe('GET /api/items', function () {
 });
 
 describe('PATCH /api/items/{item_id}', function () {
-    it('updates code, storage and dates; a new production date recalculates the expiration', function () {
+    it('updates storage and dates; a new production date recalculates the expiration', function () {
         $storage = Storage::factory()->create();
         $product = Product::factory()->create(['shelf_life_days' => 10]);
         $item = Item::factory()->create(['product_id' => $product->id, 'code' => 'OLD', 'produced_at' => '2026-11-01', 'expires_at' => '2026-11-11']);
 
-        $this->patchJson("/api/items/{$item->id}", ['code' => ' NEW ', 'storage_id' => $storage->id, 'produced_at' => '2026-11-05'])
+        $this->patchJson("/api/items/{$item->id}", ['storage_id' => $storage->id, 'produced_at' => '2026-11-05'])
             ->assertOk()
             ->assertJsonPath('message.pt-br', 'Item atualizado com sucesso.')
-            ->assertJsonPath('data.code', 'NEW')
+            ->assertJsonPath('data.code', 'OLD')
             ->assertJsonPath('data.storage.id', $storage->id)
             ->assertJsonPath('data.produced_at', '2026-11-05')
             ->assertJsonPath('data.expires_at', '2026-11-15');
@@ -348,17 +349,20 @@ describe('PATCH /api/items/{item_id}', function () {
         'nothing' => [[], 'No fields to update were provided.'],
         'two modes' => [['quantity' => 1, 'quantity_add' => 1], 'Provide only one quantity mode: set, add or subtract.'],
         'negative' => [['quantity' => -1], 'Invalid quantity.'],
-        'blank code' => [['code' => ''], 'Invalid code (up to 80 characters).'],
+        'only the code' => [['code' => 'NEW'], 'No fields to update were provided.'],
         'bad date' => [['expires_at' => '2026-13-01'], 'Invalid date. Use the YYYY-MM-DD format.'],
     ]);
 
-    it('rejects a repeated code and an unknown storage', function () {
-        Item::factory()->create(['code' => 'TAKEN']);
-        $item = Item::factory()->create();
+    it('never changes the code', function () {
+        $item = Item::factory()->create(['code' => 'KEEP']);
 
-        $this->patchJson("/api/items/{$item->id}", ['code' => 'TAKEN'])
-            ->assertUnprocessable()
-            ->assertJsonPath('message.en-us', 'An item with this code already exists.');
+        $this->patchJson("/api/items/{$item->id}", ['code' => 'NEW', 'produced_at' => '2026-11-05'])
+            ->assertOk()
+            ->assertJsonPath('data.code', 'KEEP');
+    });
+
+    it('rejects an unknown storage', function () {
+        $item = Item::factory()->create();
 
         $this->patchJson("/api/items/{$item->id}", ['storage_id' => 999])
             ->assertUnprocessable()
@@ -366,7 +370,7 @@ describe('PATCH /api/items/{item_id}', function () {
     });
 
     it('returns 404 for an unknown item', function (string $id) {
-        $this->patchJson("/api/items/{$id}", ['code' => 'X'])
+        $this->patchJson("/api/items/{$id}", ['produced_at' => '2026-11-05'])
             ->assertNotFound()
             ->assertJsonPath('message.pt-br', 'Item não encontrado.');
     })->with(['404', 'abc']);
@@ -375,7 +379,7 @@ describe('PATCH /api/items/{item_id}', function () {
         $item = Item::factory()->create();
         failTable('delivery_package_has_item');
 
-        $this->patchJson("/api/items/{$item->id}", ['code' => 'X'])
+        $this->patchJson("/api/items/{$item->id}", ['produced_at' => '2026-11-05'])
             ->assertInternalServerError()
             ->assertJsonPath('message.en-us', 'Error updating the item.');
     });

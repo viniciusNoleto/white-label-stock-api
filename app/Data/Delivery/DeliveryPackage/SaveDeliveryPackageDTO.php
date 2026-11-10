@@ -9,7 +9,7 @@ class SaveDeliveryPackageDTO extends Data {
 
     /**
      * @param string|null $notes anotações em branco são gravadas como `null`
-     * @param array<int, array{product_id: int, quantity: string}> $items produtos sem repetição; quantidade com 4 casas (escala da coluna) para as contas com bcmath
+     * @param array<int, array{product_id: int, quantity: string, item_ids: int[]|null}> $items produtos sem repetição; quantidade com 4 casas (escala da coluna) para as contas com bcmath; `item_ids` = itens escolhidos um a um (`null` = FEFO)
      */
     public function __construct(
         public ?string $notes,
@@ -30,6 +30,7 @@ class SaveDeliveryPackageDTO extends Data {
                 ->map(fn($item) => [
                     'product_id' => (int)$item['product_id'],
                     'quantity' => number_format((float)$item['quantity'], 4, '.', ''),
+                    'item_ids' => isset($item['item_ids']) ? array_map('intval', $item['item_ids']) : null,
                 ])
                 ->values()
                 ->all(),

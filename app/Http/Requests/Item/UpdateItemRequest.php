@@ -10,6 +10,8 @@ class UpdateItemRequest extends BaseRequest {
     private const QUANTITY_FIELDS = ['quantity', 'quantity_add', 'quantity_subtract'];
 
     /**
+     * Sem `code`: o código do item é fixo (gerado na criação) e não pode ser editado.
+     *
      * @return array<string, mixed>
      */
     public function rules(): array {
@@ -17,7 +19,6 @@ class UpdateItemRequest extends BaseRequest {
             'quantity' => 'nullable|numeric|min:0',
             'quantity_add' => 'nullable|numeric|gt:0',
             'quantity_subtract' => 'nullable|numeric|gt:0',
-            'code' => 'sometimes|required|string|max:80',
             'produced_at' => 'sometimes|required|date_format:Y-m-d',
             'expires_at' => 'nullable|date_format:Y-m-d',
             'storage_id' => 'nullable',
@@ -32,7 +33,6 @@ class UpdateItemRequest extends BaseRequest {
             'quantity.*' => 'messages.items.invalid_quantity',
             'quantity_add.*' => 'messages.items.invalid_quantity',
             'quantity_subtract.*' => 'messages.items.invalid_quantity',
-            'code.*' => 'messages.items.invalid_code',
             'produced_at.*' => 'messages.items.invalid_date',
             'expires_at.*' => 'messages.items.invalid_date',
         ];
@@ -55,7 +55,7 @@ class UpdateItemRequest extends BaseRequest {
 
                 if ($quantity_fields > 1) {
                     $validator->errors()->add('payload', 'messages.items.single_quantity_mode');
-                } elseif (!$quantity_fields && !$this->hasAny(['code', 'produced_at', 'expires_at', 'storage_id'])) {
+                } elseif (!$quantity_fields && !$this->hasAny(['produced_at', 'expires_at', 'storage_id'])) {
                     $validator->errors()->add('payload', 'messages.items.no_fields');
                 }
             },

@@ -83,10 +83,8 @@ return [
         'product_required' => 'Select the product.',
         'invalid_quantity' => 'Invalid quantity.',
         'invalid_date' => 'Invalid date. Use the YYYY-MM-DD format.',
-        'invalid_code' => 'Invalid code (up to 80 characters).',
         'invalid_reference' => 'The given product or storage does not exist.',
         'code_taken' => 'An item with this code already exists.',
-        'code_single' => 'A manual code can only be used when generating a single item.',
         'atomic_batch' => 'Atomic items are generated in whole quantities, from 1 to :max at a time.',
         'atomic_integer' => '":name" is counted per unit: use a whole quantity.',
         'atomic_quantity_locked' => 'An atomic item is a single unit: to remove it from stock, delete the item.',
@@ -110,6 +108,10 @@ return [
         'fetch_error' => 'Error fetching stock.',
     ],
 
+    'stock_movements' => [
+        'fetch_error' => 'Error fetching stock movements.',
+    ],
+
     'delivery_packages' => [
         'not_found' => 'Package not found.',
         'invalid_items' => 'Select at least one product, each with a quantity greater than zero.',
@@ -117,6 +119,12 @@ return [
         'invalid_notes' => 'Notes must be a text of up to 10000 characters.',
         'invalid_reference' => 'Some of the given products do not exist.',
         'insufficient_stock' => 'Not enough free stock of ":name" to package. Required: :required, Available: :available.',
+        'invalid_selection_ids' => 'Invalid selected items.',
+        'invalid_selection' => 'A selected item does not exist or is not from ":name".',
+        'selection_atomic_only' => 'Only products counted by unit allow choosing the items: ":name" is bulk.',
+        'selection_count' => 'The quantity of ":name" (:quantity) does not match the selected items (:count).',
+        'selection_expired' => 'Item :code is expired and cannot be packaged.',
+        'selection_reserved' => 'Item :code is already reserved in another pending package.',
         'already_delivered' => 'This package has already been delivered.',
         'created' => 'Package created successfully.',
         'updated' => 'Package updated successfully.',

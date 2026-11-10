@@ -26,7 +26,7 @@ describe('GET /api/stock', function () {
     it('returns an empty first page', function () {
         listStock()
             ->assertOk()
-            ->assertJsonPath('data', ['items' => [], 'meta' => ['page' => 1, 'per_page' => 15, 'total' => 0, 'last_page' => 1]]);
+            ->assertJsonPath('data', ['items' => [], 'meta' => ['page' => 1, 'per_page' => 8, 'total' => 0, 'last_page' => 1]]);
     });
 
     it('groups atomic items in one row per product and shows each bulk lot as it is', function () {
@@ -91,19 +91,39 @@ describe('GET /api/stock', function () {
         expect(collect(listStock()->json('data.items'))->pluck('item.code')->all())->toBe(['FULL']);
     });
 
-    it('searches by product name, SKU or item code and paginates', function () {
+    it('searches by product name or SKU and paginates', function () {
         $cake = Product::factory()->create(['name' => 'Bolo', 'sku' => 'CHOC']);
-        $flour = Product::factory()->bulk()->create(['name' => 'Farinha']);
-        Item::factory()->count(3)->create(['product_id' => $cake->id]);
+        $flour = Product::factory()->bulk()->create(['name' => 'Farinha', 'sku' => 'FAR']);
+        Item::factory()->count(3)->sequence(fn($sequence) => ['code' => 'BOLO-' . $sequence->index])->create(['product_id' => $cake->id]);
         Item::factory()->create(['product_id' => $flour->id, 'code' => 'FAR-LOTE-7']);
         Item::factory()->create(['product_id' => $flour->id, 'code' => 'FAR-LOTE-8']);
 
         $keys = fn(string $query) => collect(listStock($query)->json('data.items'))->pluck('key')->all();
 
         expect($keys('?search=choc'))->toBe(["product-{$cake->id}"])
+            ->and($keys('?search=bol'))->toBe(["product-{$cake->id}"])
             ->and(count($keys('?search=farinha')))->toBe(2)
-            ->and($keys('?search=lote-8'))->toBe(['item-' . Item::where('code', 'FAR-LOTE-8')->value('id')])
+            ->and(count($keys('?search=far')))->toBe(2)
+            ->and($keys('?search=bolo-'))->toBe([])
+            ->and($keys('?search=lote-8'))->toBe([])
             ->and(listStock('?page=2&per_page=2')->json('data.meta'))->toBe(['page' => 2, 'per_page' => 2, 'total' => 3, 'last_page' => 2]);
+    });
+
+    it('filters by storage and exact expiration date before grouping', function () {
+        $shelf = Storage::factory()->create(['name' => 'Prateleira']);
+        $cake = Product::factory()->create(['name' => 'Bolo']);
+        $flour = Product::factory()->bulk()->create(['name' => 'Farinha']);
+        Item::factory()->create(['product_id' => $cake->id, 'storage_id' => $shelf->id, 'expires_at' => '2026-11-12']);
+        Item::factory()->create(['product_id' => $cake->id, 'storage_id' => $shelf->id, 'expires_at' => '2026-11-20']);
+        Item::factory()->create(['product_id' => $cake->id, 'expires_at' => '2026-11-12']);
+        Item::factory()->create(['product_id' => $flour->id, 'code' => 'FAR-1', 'quantity' => '2', 'expires_at' => '2026-11-12']);
+
+        $rows = fn(string $query) => collect(listStock($query)->json('data.items'))->map(fn($row) => [$row['product']['name'], $row['quantity']])->all();
+
+        expect($rows("?storage_id={$shelf->id}"))->toBe([['Bolo', '2.0000']])
+            ->and($rows('?expires_at=2026-11-12'))->toBe([['Bolo', '2.0000'], ['Farinha', '2.0000']])
+            ->and($rows("?storage_id={$shelf->id}&expires_at=2026-11-12"))->toBe([['Bolo', '1.0000']])
+            ->and(count($rows('?expires_at=nope&storage_id=x')))->toBe(2);
     });
 
     it('returns 500 when the database fails', function () {

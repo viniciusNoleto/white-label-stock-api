@@ -2,7 +2,9 @@
 
 namespace App\Actions\Inventory\Item;
 
+use App\Actions\Inventory\StockMovement\RecordStockMovementsAction;
 use App\Data\Inventory\Item\UpdateItemDTO;
+use App\Enum\Inventory\StockMovementTypeEnum;
 use App\Exceptions\ApiException;
 use App\Models\Inventory\Item;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -17,10 +19,16 @@ final class UpdateItemAction {
 
     private const SCALE = 4;
 
+    public function __construct(
+        private readonly RecordStockMovementsAction $recordMovements,
+    ) {
+    }
+
     /**
-     * Código, armazenamento, datas e — só a granel — quantidade (definir, somar ou subtrair).
+     * Armazenamento, datas e — só a granel — quantidade (definir, somar ou subtrair).
      * O item fica travado durante a alteração: a quantidade nunca fica negativa nem abaixo do
      * que está reservado em pacotes pendentes, mesmo com alterações simultâneas.
+     * Mudança de quantidade vira movimentação de ajuste; de armazenamento, de transferência.
      *
      * @param mixed $id
      * @param UpdateItemDTO $dto
@@ -41,8 +49,13 @@ final class UpdateItemAction {
                     $attributes['quantity'] = $this->newQuantity($item, $dto);
                 }
 
+                $previous_quantity = $item->quantity;
+                $previous_storage_id = $item->storage_id;
+
                 $item->update($attributes);
                 $item->touch();
+
+                $this->recordMovements($item, $previous_quantity, $previous_storage_id);
 
                 return Item::query()->withReservedQuantity()->with(['product.unit', 'storage'])->findOrFail($item->id);
             });
@@ -51,11 +64,36 @@ final class UpdateItemAction {
                 throw new ApiException('messages.items.invalid_reference');
             }
 
-            if (is_unique_violation($exception)) {
-                throw new ApiException('messages.items.code_taken');
-            }
-
             throw $exception;
+        }
+    }
+
+    /**
+     * Ajuste (diferença de quantidade, com sinal) e transferência (quantidade zero), só se mudaram.
+     *
+     * @param Item $item já atualizado
+     * @param string $previous_quantity
+     * @param int|null $previous_storage_id
+     * @return void
+     */
+    private function recordMovements(Item $item, string $previous_quantity, ?int $previous_storage_id): void {
+        $delta = bcsub((string)$item->quantity, $previous_quantity, self::SCALE);
+
+        if (bccomp($delta, '0', self::SCALE) !== 0) {
+            $this->recordMovements->handle(StockMovementTypeEnum::ADJUSTMENT, $item->product, [[
+                'item' => $item,
+                'quantity' => $delta,
+                'balance' => (string)$item->quantity,
+            ]]);
+        }
+
+        if ($item->storage_id !== $previous_storage_id) {
+            $this->recordMovements->handle(StockMovementTypeEnum::TRANSFER, $item->product, [[
+                'item' => $item,
+                'quantity' => '0',
+                'balance' => (string)$item->quantity,
+                'previous_storage_id' => $previous_storage_id,
+            ]]);
         }
     }
 
@@ -66,10 +104,6 @@ final class UpdateItemAction {
      */
     private function attributes(Item $item, UpdateItemDTO $dto): array {
         $attributes = [];
-
-        if ($dto->code !== null) {
-            $attributes['code'] = $dto->code;
-        }
 
         if ($dto->has_storage_id) {
             $attributes['storage_id'] = $dto->storage_id;
