@@ -10,7 +10,7 @@ class CreateItemsDTO extends Data {
     /**
      * @param int $product_id
      * @param string $quantity atômico: quantos itens gerar (lote); a granel: quantidade do registro. Padrão 1, com 4 casas
-     * @param string $produced_at `Y-m-d`; padrão hoje
+     * @param string $produced_at `Y-m-d`; padrão hoje no fuso do negócio
      * @param int|null $storage_id
      * @param bool $consume_components consome a receita do produto (`quantity_required × quantity`)
      */
@@ -30,8 +30,8 @@ class CreateItemsDTO extends Data {
     public static function fromRequest(CreateItemsRequest $request): CreateItemsDTO {
         return new self(
             product_id: (int)$request->validated('product_id'),
-            quantity: number_format((float)($request->validated('quantity') ?? 1), 4, '.', ''),
-            produced_at: $request->validated('produced_at') ?? now()->toDateString(),
+            quantity: to_decimal($request->validated('quantity') ?? 1),
+            produced_at: $request->validated('produced_at') ?? business_today(),
             storage_id: parse_id($request->validated('storage_id')),
             consume_components: (bool)($request->validated('consume_components') ?? false),
         );

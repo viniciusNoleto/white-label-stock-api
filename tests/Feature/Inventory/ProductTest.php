@@ -321,6 +321,30 @@ describe('DELETE /api/products/{product_id}', function () {
             ->assertJsonPath('message.en-us', 'This product has items, is part of another product\'s recipe or is in delivery packages.');
     })->with(['items', 'recipe']);
 
+    it('deletes a bulk product whose lots are all empty, keeping its history in the movements', function () {
+        $flour = Product::factory()->bulk()->create(['name' => 'Farinha']);
+        $lot = $this->withToken(accessToken())
+            ->postJson('/api/items', ['product_id' => $flour->id, 'quantity' => 5])
+            ->json('data.items.0');
+        $this->patchJson("/api/items/{$lot['id']}", ['quantity_subtract' => 5])->assertOk();
+
+        $this->deleteJson("/api/products/{$flour->id}")->assertOk();
+
+        expect(Product::find($flour->id))->toBeNull()
+            ->and(Item::find($lot['id']))->toBeNull()
+            ->and(DB::table('stock_movements')->where('item_code', $lot['code'])->pluck('product_name')->all())->toBe(['Farinha', 'Farinha']);
+    });
+
+    it('keeps the empty lots when the product cannot be deleted', function () {
+        $flour = Product::factory()->bulk()->create();
+        $empty = Item::factory()->create(['product_id' => $flour->id, 'quantity' => '0']);
+        Item::factory()->create(['product_id' => $flour->id, 'quantity' => '2']);
+
+        $this->deleteJson("/api/products/{$flour->id}")->assertStatus(409);
+
+        expect(Item::find($empty->id))->not->toBeNull();
+    });
+
     it('returns 404 for an unknown product', function () {
         $this->deleteJson('/api/products/404')
             ->assertNotFound()

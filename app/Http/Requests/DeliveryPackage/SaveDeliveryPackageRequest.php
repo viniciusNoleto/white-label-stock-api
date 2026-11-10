@@ -8,6 +8,8 @@ class SaveDeliveryPackageRequest extends BaseRequest {
 
     public const NOTES_MAX_LENGTH = 10000;
 
+    public const RECIPIENT_MAX_LENGTH = 255;
+
     /**
      * A ordem das regras define qual mensagem aparece primeiro. `item_ids` (opcional, só atômicos):
      * os itens escolhidos um a um no lugar do FEFO; a quantidade precisa bater com eles.
@@ -18,9 +20,10 @@ class SaveDeliveryPackageRequest extends BaseRequest {
         return [
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|integer|min:1|distinct',
-            'items.*.quantity' => 'required|numeric|gt:0',
+            'items.*.quantity' => 'required|' . decimal_rule() . '|gt:0',
             'items.*.item_ids' => 'nullable|array|min:1',
             'items.*.item_ids.*' => 'required|integer|min:1|distinct',
+            'recipient' => 'nullable|string|max:' . self::RECIPIENT_MAX_LENGTH,
             'notes' => 'nullable|string|max:' . self::NOTES_MAX_LENGTH,
         ];
     }
@@ -38,6 +41,7 @@ class SaveDeliveryPackageRequest extends BaseRequest {
             'items.*.item_ids.*.*' => 'messages.delivery_packages.invalid_selection_ids',
             'items.*.item_ids.*' => 'messages.delivery_packages.invalid_selection_ids',
             'items.*' => 'messages.delivery_packages.invalid_items',
+            'recipient.*' => 'messages.delivery_packages.invalid_recipient',
             'notes.*' => 'messages.delivery_packages.invalid_notes',
         ];
     }

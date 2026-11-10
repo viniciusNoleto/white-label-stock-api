@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Inventory;
 
+use App\Models\Inventory\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -9,7 +10,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * Linha da tela de operação (`ListStockQuery`): `kind = group` junta os itens atômicos de um
  * produto (`quantity` = quantos existem); `kind = record` é um lote a granel, mostrado como está.
  *
- * @property array{row: object, product: \App\Models\Inventory\Product} $resource
+ * @property array{row: object, product: Product} $resource
  */
 class StockRowResource extends JsonResource {
 

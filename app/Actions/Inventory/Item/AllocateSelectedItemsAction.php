@@ -35,11 +35,10 @@ final class AllocateSelectedItemsAction {
             ]);
         }
 
-        // Trava na ordem do id, como o FEFO (evita deadlock).
+        // Mesma ordem global de locks da reserva FEFO e da entrega (`Item::lockedInStockOrder`).
         $items = Item::query()
             ->whereIn('id', $item_ids)
-            ->orderBy('id')
-            ->lockForUpdate()
+            ->lockedInStockOrder()
             ->get();
 
         if ($items->count() !== count($item_ids) || $items->contains(fn(Item $item) => $item->product_id !== $product->id)) {
@@ -51,10 +50,10 @@ final class AllocateSelectedItemsAction {
             ->pluck('delivery_package_has_item.item_id')
             ->all();
 
-        $today = now()->startOfDay();
+        $today = business_today();
 
         foreach ($items as $item) {
-            if ($item->expires_at !== null && $item->expires_at->lt($today)) {
+            if ($item->isExpired($today)) {
                 throw new ApiException('messages.delivery_packages.selection_expired', 422, ['code' => $item->code]);
             }
 

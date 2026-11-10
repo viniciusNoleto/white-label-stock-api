@@ -4,6 +4,8 @@ use App\Models\Delivery\DeliveryPackage;
 use App\Models\Inventory\Item;
 use App\Models\Inventory\Product;
 use App\Models\Inventory\Unit;
+use App\Models\User;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 
@@ -72,7 +74,7 @@ describe('POST /api/delivery-packages', function () {
         $b1 = Item::where('code', 'BOLO-0001')->value('id');
         $b2 = Item::where('code', 'BOLO-0002')->value('id');
 
-        expect(array_keys($response->json('data')))->toBe(['id', 'status', 'notes', 'delivered_at', 'created_at', 'updated_at', 'items'])
+        expect(array_keys($response->json('data')))->toBe(['id', 'status', 'recipient', 'notes', 'created_by', 'delivered_at', 'created_at', 'updated_at', 'items'])
             ->and($response->json('data.items'))->toBe([
                 [
                     'product_id' => $cake->id, 'name' => 'Bolo', 'is_atomic' => true, 'quantity' => '2.0000', 'stock_quantity' => '3.0000',
@@ -109,6 +111,43 @@ describe('POST /api/delivery-packages', function () {
             'COCO-L2' => ['4.0000', '4.0000'],
             'COCO-L1' => ['6.0000', '1.5000'],
         ]);
+    });
+
+    it('records the recipient and who assembled the package', function () {
+        [$coco] = seedPackageStock();
+        $author = User::factory()->create(['name' => 'Ana']);
+
+        $response = $this->withToken(accessToken($author))
+            ->postJson('/api/delivery-packages', ['recipient' => '  Mesa 4  ', 'items' => [['product_id' => $coco->id, 'quantity' => 1]]])
+            ->assertCreated()
+            ->assertJsonPath('data.recipient', 'Mesa 4')
+            ->assertJsonPath('data.created_by', ['id' => $author->id, 'name' => 'Ana']);
+
+        // O autor continua legível depois que o usuário é excluído (o id vira null).
+        $author->delete();
+
+        $this->withToken(accessToken())->getJson('/api/delivery-packages/' . $response->json('data.id'))
+            ->assertJsonPath('data.created_by', ['id' => null, 'name' => 'Ana']);
+    });
+
+    it('keeps the author when the package is edited by someone else', function () {
+        [$coco] = seedPackageStock();
+        $author = User::factory()->create(['name' => 'Ana']);
+        $id = $this->withToken(accessToken($author))->postJson('/api/delivery-packages', ['items' => [['product_id' => $coco->id, 'quantity' => 1]]])->json('data.id');
+
+        $this->withToken(accessToken())
+            ->putJson("/api/delivery-packages/{$id}", ['recipient' => 'Cliente B', 'items' => [['product_id' => $coco->id, 'quantity' => 2]]])
+            ->assertOk()
+            ->assertJsonPath('data.recipient', 'Cliente B')
+            ->assertJsonPath('data.created_by.name', 'Ana');
+    });
+
+    it('rejects a recipient that is too long', function () {
+        [$coco] = seedPackageStock();
+
+        $this->postJson('/api/delivery-packages', ['recipient' => str_repeat('a', 256), 'items' => [['product_id' => $coco->id, 'quantity' => 1]]])
+            ->assertUnprocessable()
+            ->assertJsonPath('message.en-us', 'The recipient must be a text of up to 255 characters.');
     });
 
     it('stores blank notes as null', function () {
@@ -423,6 +462,56 @@ describe('POST /api/delivery-packages/{delivery_package_id}/deliver', function (
         expect(productStock()['Coco ralado'])->toBe(['7.0000', '0.0000']);
     });
 
+    it('refuses an item that expired after being reserved and delivers nothing', function () {
+        [$coco, $cake] = seedPackageStock();
+        // BOLO-0002 vence em 2 dias: válido na reserva…
+        $id = postPackage([['product_id' => $coco->id, 'quantity' => 1], ['product_id' => $cake->id, 'quantity' => 1]])->json('data.id');
+
+        // …e vencido no dia da entrega (token novo: o access token vale 15 min).
+        Carbon::setTestNow(now()->addDays(3));
+        $this->withToken(accessToken());
+
+        $this->postJson("/api/delivery-packages/{$id}/deliver")
+            ->assertUnprocessable()
+            ->assertJsonPath('data', null)
+            ->assertJsonPath('message.pt-br', 'O item BOLO-0002 venceu depois de reservado e não pode ser entregue. Edite o pacote para trocar o item.');
+
+        expect(DeliveryPackage::find($id)->isDelivered())->toBeFalse()
+            ->and(Item::where('code', 'BOLO-0002')->exists())->toBeTrue()
+            ->and(Item::where('code', 'COCO-L2')->value('quantity'))->toBe('4.0000')
+            ->and(DB::table('stock_movements')->count())->toBe(0);
+
+        // Editar o pacote troca o vencido por um válido (FEFO) e a entrega passa.
+        $this->putJson("/api/delivery-packages/{$id}", ['items' => [['product_id' => $coco->id, 'quantity' => 1], ['product_id' => $cake->id, 'quantity' => 1]]])
+            ->assertOk()
+            ->assertJsonPath('data.items.0.allocations.0.code', 'BOLO-0001');
+        $this->postJson("/api/delivery-packages/{$id}/deliver")->assertOk();
+
+        Carbon::setTestNow();
+    });
+
+    it('still delivers an item on its expiration day, in the business timezone', function () {
+        config(['app.business_timezone' => 'America/Sao_Paulo']);
+        $product = Product::factory()->create(['sku' => 'TORTA']);
+        Item::factory()->create(['product_id' => $product->id, 'code' => 'TORTA-0001', 'expires_at' => '2026-11-10']);
+
+        // 22h de 10/11 em São Paulo = 01h de 11/11 em UTC: para a loja, ainda é o dia do vencimento.
+        Carbon::setTestNow('2026-11-11 01:00:00');
+        $this->withToken(accessToken());
+        $id = postPackage([['product_id' => $product->id, 'quantity' => 1]])->assertCreated()->json('data.id');
+        $this->postJson("/api/delivery-packages/{$id}/deliver")->assertOk();
+
+        // 00h01 de 11/11 em São Paulo: agora venceu.
+        Item::factory()->create(['product_id' => $product->id, 'code' => 'TORTA-0002', 'expires_at' => '2026-11-10']);
+        Carbon::setTestNow('2026-11-11 03:01:00');
+        $this->withToken(accessToken());
+        postPackage([['product_id' => $product->id, 'quantity' => 1]])
+            ->assertUnprocessable()
+            ->assertJsonPath('message.en-us', 'Not enough free stock of "' . $product->name . '" to package. Required: 1, Available: 0.');
+
+        Carbon::setTestNow();
+    });
+
     it('rolls back when a reserved lot no longer has the quantity', function () {
         [$coco, $cake] = seedPackageStock();
         $id = postPackage([['product_id' => $cake->id, 'quantity' => 1], ['product_id' => $coco->id, 'quantity' => 4]])->json('data.id');
@@ -464,6 +553,21 @@ describe('DELETE /api/delivery-packages/{delivery_package_id}', function () {
 
         expect(DB::table('delivery_package_has_item')->count())->toBe(0)
             ->and(productStock())->toBe(['Bolo' => ['3.0000', '0.0000'], 'Coco ralado' => ['10.0000', '0.0000']]);
+    });
+
+    it('never deletes a delivered package: it is the record of what left the stock', function () {
+        [$coco] = seedPackageStock();
+        $id = postPackage([['product_id' => $coco->id, 'quantity' => 3]])->json('data.id');
+        $this->postJson("/api/delivery-packages/{$id}/deliver")->assertOk();
+
+        $this->deleteJson("/api/delivery-packages/{$id}")
+            ->assertUnprocessable()
+            ->assertJsonPath('data', null)
+            ->assertJsonPath('message.en-us', 'A delivered package is the record of the stock that left and cannot be deleted.');
+
+        expect(DeliveryPackage::find($id))->not->toBeNull()
+            ->and(DB::table('delivery_package_has_item')->where('delivery_package_id', $id)->count())->toBe(1)
+            ->and(DB::table('stock_movements')->where('delivery_package_id', $id)->count())->toBe(1);
     });
 
     it('returns 404 for an unknown package', function () {

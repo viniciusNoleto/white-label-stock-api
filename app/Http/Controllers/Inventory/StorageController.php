@@ -11,10 +11,10 @@ use App\Data\Inventory\Storage\SaveStorageDTO;
 use App\Http\Requests\Storage\SaveStorageRequest;
 use App\Http\Resources\Inventory\StorageResource;
 use App\Models\Inventory\Storage;
-use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 class StorageController extends BaseController {
 
@@ -24,7 +24,7 @@ class StorageController extends BaseController {
      * @param Request $request
      * @return JsonResponse|Response
      */
-    public function index(Request $request) {
+    public function index(Request $request): JsonResponse|Response {
         try {
             $dto = ListPageDTO::fromRequest($request);
             $paginator = Storage::query()
@@ -33,17 +33,9 @@ class StorageController extends BaseController {
                 ->paginate(perPage: $dto->per_page, page: $dto->page);
 
             return self::successResponse(
-                data: [
-                    'items' => StorageResource::collection($paginator->items()),
-                    'meta' => [
-                        'page' => $dto->page,
-                        'per_page' => $dto->per_page,
-                        'total' => $paginator->total(),
-                        'last_page' => max(1, $paginator->lastPage()),
-                    ],
-                ]
+                data: self::paginated($paginator, StorageResource::class)
             );
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             return self::returnError($exception, 'messages.storages.fetch_error');
         }
     }
@@ -53,14 +45,14 @@ class StorageController extends BaseController {
      * @param CreateStorageAction $action
      * @return JsonResponse|Response
      */
-    public function store(SaveStorageRequest $request, CreateStorageAction $action) {
+    public function store(SaveStorageRequest $request, CreateStorageAction $action): JsonResponse|Response {
         try {
             return self::successResponse(
                 data: StorageResource::make($action->handle(SaveStorageDTO::fromRequest($request))),
                 message: 'messages.storages.created',
                 status_code: 201
             );
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             return self::returnError($exception, 'messages.storages.create_error');
         }
     }
@@ -71,13 +63,13 @@ class StorageController extends BaseController {
      * @param string $storage_id
      * @return JsonResponse|Response
      */
-    public function update(SaveStorageRequest $request, UpdateStorageAction $action, string $storage_id) {
+    public function update(SaveStorageRequest $request, UpdateStorageAction $action, string $storage_id): JsonResponse|Response {
         try {
             return self::successResponse(
                 data: StorageResource::make($action->handle($storage_id, SaveStorageDTO::fromRequest($request))),
                 message: 'messages.storages.updated'
             );
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             return self::returnError($exception, 'messages.storages.update_error');
         }
     }
@@ -87,12 +79,12 @@ class StorageController extends BaseController {
      * @param string $storage_id
      * @return JsonResponse|Response
      */
-    public function destroy(DeleteStorageAction $action, string $storage_id) {
+    public function destroy(DeleteStorageAction $action, string $storage_id): JsonResponse|Response {
         try {
             $action->handle($storage_id);
 
             return self::successResponse(message: 'messages.storages.deleted');
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             return self::returnError($exception, 'messages.storages.delete_error');
         }
     }

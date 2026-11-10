@@ -2,6 +2,8 @@
 
 namespace App\Http\Resources\Inventory;
 
+use App\Models\Inventory\Product;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -9,6 +11,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * Produto com unidade, categorias, receita (`components`, com o estoque e o reservado de cada componente)
  * e o resumo do estoque: `stock_quantity` (soma dos itens), `reserved_quantity` (em pacotes
  * pendentes), `expired_quantity` (vencidos) e `items_count` (registros).
+ *
+ * @mixin Product
  */
 class ProductResource extends JsonResource {
 
@@ -16,6 +20,9 @@ class ProductResource extends JsonResource {
      * @return array<string, mixed>
      */
     public function toArray(Request $request): array {
+        /** @var Collection<int, Product> $components receita (o Larastan não resolve o genérico da relação autorreferente) */
+        $components = $this->components;
+
         return [
             'id' => $this->id,
             'name' => $this->name,
@@ -38,7 +45,7 @@ class ProductResource extends JsonResource {
                 'name' => $category->name,
                 'color_hex' => $category->color_hex,
             ])->values(),
-            'components' => $this->components->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)->map(fn($component) => [
+            'components' => $components->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)->map(fn(Product $component) => [
                 'id' => $component->id,
                 'name' => $component->name,
                 'is_atomic' => $component->is_atomic,

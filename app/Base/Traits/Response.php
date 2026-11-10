@@ -7,6 +7,7 @@ use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response as HttpResponse;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
@@ -77,8 +78,12 @@ trait Response {
             return self::modelNotFoundResponse($exception);
         }
 
-        if ($exception instanceof HttpExceptionInterface && $exception->getStatusCode() < 500) {
+        if ($exception instanceof HttpExceptionInterface && ($exception->getStatusCode() < 500 || $exception->getStatusCode() === 503)) {
             return self::httpExceptionResponse($exception);
+        }
+
+        if (is_concurrency_failure($exception)) {
+            return self::concurrencyFailureResponse($exception);
         }
 
         return self::internalServerErrorResponse($exception, $message);
@@ -105,6 +110,19 @@ trait Response {
     }
 
     /**
+     * Deadlock/serialização que sobrou depois das tentativas da transação: é uma corrida, não um bug
+     * (o dado não foi alterado). 409 pede para o cliente tentar de novo; o log registra para medir a frequência.
+     *
+     * @param Throwable $exception
+     * @return JsonResponse
+     */
+    public static function concurrencyFailureResponse(Throwable $exception): JsonResponse {
+        Log::warning('database.concurrency_failure', ['sqlstate' => (string)$exception->getCode()]);
+
+        return self::errorResponse('messages.concurrency_conflict', 409);
+    }
+
+    /**
      * O `getMessage()` da exceção é a chave da mensagem (ex.: `messages.units.not_found`).
      *
      * @param ModelNotFoundException $exception
@@ -118,7 +136,8 @@ trait Response {
     }
 
     /**
-     * Rota inexistente, método não permitido, JSON malformado…
+     * Rota inexistente, método não permitido, JSON malformado, rate limit (429, com `Retry-After`),
+     * manutenção durante o deploy (503)…
      *
      * @param HttpExceptionInterface $exception
      * @return JsonResponse
@@ -126,12 +145,23 @@ trait Response {
     public static function httpExceptionResponse(HttpExceptionInterface $exception): JsonResponse {
         $status_code = $exception->getStatusCode();
 
-        $default_message = in_array($status_code, [404, 405]) ? 'messages.not_found' : 'messages.invalid_payload';
+        $default_message = match ($status_code) {
+            404, 405 => 'messages.not_found',
+            429 => 'messages.too_many_requests',
+            503 => 'messages.maintenance',
+            default => 'messages.invalid_payload',
+        };
 
-        return self::errorResponse(
+        $response = self::errorResponse(
             message: is_message_key($exception->getMessage()) ? $exception->getMessage() : $default_message,
             status_code: $status_code === 405 ? 404 : $status_code
         );
+
+        if (in_array($status_code, [429, 503], true)) {
+            $response->headers->add($exception->getHeaders());
+        }
+
+        return $response;
     }
 
     /**

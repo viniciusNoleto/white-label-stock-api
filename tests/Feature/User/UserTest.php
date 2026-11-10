@@ -1,9 +1,10 @@
 <?php
 
+use App\Actions\Auth\CreateRefreshTokenAction;
 use App\Models\Auth\AccessToken;
 use App\Models\Auth\RefreshToken;
-use App\Actions\Auth\CreateRefreshTokenAction;
 use App\Models\User;
+use Illuminate\Support\Facades\Hash;
 
 beforeEach(function () {
     $this->admin = User::factory()->admin()->create(['name' => 'Zeca Admin']);
@@ -19,6 +20,7 @@ describe('admin only', function () {
     })->with([
         ['GET', '/api/users'],
         ['DELETE', '/api/users/1'],
+        ['PUT', '/api/users/1/password'],
     ]);
 });
 
@@ -86,4 +88,54 @@ describe('DELETE /api/users/{id}', function () {
             ->assertNotFound()
             ->assertJsonPath('message.en-us', 'User not found.');
     })->with(['999', 'abc', '-1']);
+});
+
+describe('PUT /api/users/{id}/password', function () {
+    it('sets a new password for a regular user and signs them out', function () {
+        $user = User::factory()->create(['password' => 'forgotten-1']);
+        $token = accessToken($user);
+        app(CreateRefreshTokenAction::class)->handle($user->id);
+
+        $this->putJson("/api/users/{$user->id}/password", ['password' => 'temporary-123'])
+            ->assertOk()
+            ->assertJsonPath('data', null)
+            ->assertJsonPath('message.en-us', 'Password reset. The user\'s sessions were signed out.');
+
+        expect(Hash::check('temporary-123', $user->fresh()->password))->toBeTrue()
+            ->and(AccessToken::where('user_id', $user->id)->count())->toBe(0)
+            ->and(RefreshToken::where('user_id', $user->id)->count())->toBe(0);
+
+        $this->withToken($token)->getJson('/api/auth/me')->assertUnauthorized();
+    });
+
+    it('never resets another admin', function () {
+        $other = User::factory()->admin()->create(['password' => 'admin-pass-1']);
+
+        $this->putJson("/api/users/{$other->id}/password", ['password' => 'takeover-123'])
+            ->assertUnprocessable()
+            ->assertJsonPath('message.en-us', 'An administrator\'s password cannot be reset by another administrator.');
+
+        expect(Hash::check('admin-pass-1', $other->fresh()->password))->toBeTrue();
+    });
+
+    it('validates the password', function () {
+        $user = User::factory()->create();
+
+        $this->putJson("/api/users/{$user->id}/password", ['password' => 'short'])
+            ->assertUnprocessable()
+            ->assertJsonPath('message.en-us', 'Password must be at least 8 characters.');
+    });
+
+    it('returns 404 for an unknown user', function (string $id) {
+        $this->putJson("/api/users/{$id}/password", ['password' => 'temporary-123'])->assertNotFound();
+    })->with(['999', 'abc']);
+
+    it('returns 500 when the database fails', function () {
+        $user = User::factory()->create();
+        failTable('refresh_tokens');
+
+        $this->putJson("/api/users/{$user->id}/password", ['password' => 'temporary-123'])
+            ->assertStatus(500)
+            ->assertJsonPath('message.en-us', 'Error resetting the password.');
+    });
 });

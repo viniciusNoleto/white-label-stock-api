@@ -7,7 +7,6 @@ use Illuminate\Support\Carbon;
  * farinha, ovos e chocolate são a granel, em lotes com vencimentos diferentes.
  * Produção em lote (8 bolos de uma vez), venda FEFO e baixa dos vencidos.
  */
-
 beforeEach(function () {
     $this->withToken(accessToken());
     Carbon::setTestNow('2026-11-09 08:00:00');
@@ -90,10 +89,19 @@ it('bakes cakes in batches, sells the oldest first and lists the expired ones', 
     expect(collect($expired)->pluck('code')->all())->toBe(['BOLO-CH-0006', 'BOLO-CH-0007', 'BOLO-CH-0008', 'BOLO-CH-0009', 'BOLO-CH-0010', 'BOLO-CH-0011', 'BOLO-CH-0012'])
         ->and($cakeRow)->toMatchArray(['quantity' => '7.0000', 'expired_quantity' => '7.0000']);
 
-    // Baixa dos vencidos.
+    // Baixa dos vencidos, com o motivo: é ele que alimenta a métrica de perda por vencimento.
     foreach ($expired as $item) {
-        $this->deleteJson("/api/items/{$item['id']}")->assertOk();
+        $this->deleteJson("/api/items/{$item['id']}", ['reason' => 'expired'])->assertOk();
     }
 
     expect(collect($this->getJson('/api/stock?search=bolo')->json('data.items')))->toBeEmpty();
+
+    // O dono pergunta "quanto bolo perdi por vencimento este mês?".
+    $losses = $this->getJson('/api/stock-movements?type=write_off&reason=expired&date_from=2026-11-01&date_to=2026-11-30')
+        ->assertOk()
+        ->json('data');
+
+    expect($losses['meta']['total'])->toBe(7)
+        ->and(collect($losses['items'])->pluck('quantity')->unique()->all())->toBe(['-1.0000'])
+        ->and(collect($losses['items'])->pluck('product_name')->unique()->all())->toBe(['Bolo de chocolate']);
 });

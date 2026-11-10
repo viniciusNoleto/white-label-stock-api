@@ -7,7 +7,11 @@ use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property Carbon $expires_at
+ */
 class AccessToken extends Model {
 
     public const UPDATED_AT = null;
@@ -17,6 +21,7 @@ class AccessToken extends Model {
     protected $fillable = [
         'user_id',
         'token_hash',
+        'family_id',
         'expires_at',
     ];
 
@@ -29,6 +34,9 @@ class AccessToken extends Model {
         ];
     }
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function user(): BelongsTo {
         return $this->belongsTo(User::class, 'user_id', 'id');
     }

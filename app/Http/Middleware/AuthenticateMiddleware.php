@@ -5,9 +5,9 @@ namespace App\Http\Middleware;
 use App\Base\Traits\Response;
 use App\Queries\Auth\FindUserByAccessTokenQuery;
 use Closure;
-use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Throwable;
 
 /**
  * Protege as rotas da API: lê o access token do header `Authorization: Bearer`. Sem token
@@ -33,7 +33,7 @@ class AuthenticateMiddleware {
             Auth::setUser($user);
 
             return $next($request);
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             return self::returnError($exception);
         }
     }

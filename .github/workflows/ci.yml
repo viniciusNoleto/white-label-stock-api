@@ -1,0 +1,99 @@
+name: CI
+
+# Actions fixadas por SHA (tag só no comentário): uma tag pode ser movida, um commit não.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint, static analysis and audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.5'
+          extensions: bcmath, intl, pdo_pgsql, pcntl, posix
+          coverage: none
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: vendor
+          key: composer-${{ hashFiles('composer.lock') }}
+
+      - run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Pint (style)
+        run: composer lint
+
+      - name: Larastan (static analysis)
+        run: composer analyse
+
+      - name: Composer audit (known vulnerabilities)
+        run: composer audit-deps
+
+  tests:
+    name: Tests (Pest + Postgres 16)
+    runs-on: ubuntu-latest
+    # A suíte leva ~15 s; os testes de concorrência matam filhos presos em 30 s (`runConcurrently`).
+    # Isto é o teto do job inteiro, para um travamento nunca segurar o runner por 6 h.
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16.14-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          # Os testes usam `${DB_DATABASE}_testing` (tests/TestCase.php).
+          POSTGRES_DB: white_label_stock_testing
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: white_label_stock
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.5'
+          extensions: bcmath, intl, pdo_pgsql, pcntl, posix
+          coverage: none
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: vendor
+          key: composer-${{ hashFiles('composer.lock') }}
+
+      - run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Prepare .env
+        run: |
+          cp .env.example .env
+          php artisan key:generate --ansi
+
+      # Unit + Feature (transação por teste) e Concurrency (processos paralelos com pcntl_fork).
+      - name: Pest
+        run: composer test

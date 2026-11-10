@@ -8,15 +8,16 @@
         "inventory",
         "api"
     ],
-    "license": "MIT",
+    "license": "LicenseRef-White-Label-Stock",
     "require": {
-        "php": "^8.3",
+        "php": "^8.5",
         "laravel/framework": "^13.17",
         "laravel/tinker": "^3.0",
         "spatie/laravel-data": "^4.23"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
+        "larastan/larastan": "^3.14",
         "laravel/pail": "^1.2.5",
         "laravel/pao": "^1.0.6",
         "laravel/pint": "^1.27",
@@ -53,7 +54,22 @@
         ],
         "test": [
             "@php artisan config:clear --ansi @no_additional_args",
-            "@php artisan test"
+            "@php vendor/bin/pest"
+        ],
+        "lint": [
+            "@php vendor/bin/pint --test"
+        ],
+        "analyse": [
+            "@php vendor/bin/phpstan analyse --memory-limit=1G"
+        ],
+        "audit-deps": [
+            "@composer audit --locked"
+        ],
+        "ci": [
+            "@lint",
+            "@analyse",
+            "@audit-deps",
+            "@test"
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
@@ -66,9 +82,7 @@
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\""
         ],
         "post-create-project-cmd": [
-            "@php artisan key:generate --ansi",
-            "@php -r \"file_exists('database/database.sqlite') || touch('database/database.sqlite');\"",
-            "@php artisan migrate --graceful --ansi"
+            "@php artisan key:generate --ansi"
         ],
         "pre-package-uninstall": [
             "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
@@ -89,5 +103,12 @@
         }
     },
     "minimum-stability": "stable",
-    "prefer-stable": true
+    "prefer-stable": true,
+    "scripts-descriptions": {
+        "test": "Pest (Unit, Feature e Concurrency) contra o Postgres de teste",
+        "lint": "Pint em modo verificação (pint.json)",
+        "analyse": "Larastan (phpstan.neon)",
+        "audit-deps": "Vulnerabilidades conhecidas nas dependências (composer.lock)",
+        "ci": "Tudo o que o CI roda"
+    }
 }

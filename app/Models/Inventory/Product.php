@@ -17,10 +17,24 @@ use Illuminate\Support\Facades\DB;
  * Atômico (`is_atomic`): cada unidade é um item com código próprio (armário, bolo).
  * A granel: um item guarda uma quantidade (parafusos, farinha).
  * `quantity_required` é decimal(15,4) e sai como string (`"2.5000"`).
+ *
+ * Colunas calculadas pelo scope `withStock()`:
+ * @property-read string|null $stock_quantity
+ * @property-read string|null $reserved_quantity
+ * @property-read string|null $expired_quantity
+ * @property-read int|null $items_count
+ * @property-read object{quantity_required: string}|null $pivot na receita (`components`)
  */
 class Product extends Model {
 
     use FindsOrFailsByKey, HasFactory;
+
+    /** Relações carregadas em toda resposta de produto (`ProductResource`). */
+    public const RESPONSE_RELATIONS = [
+        'unit',
+        'categories',
+        'components',
+    ];
 
     protected $table = 'products';
 
@@ -44,10 +58,16 @@ class Product extends Model {
         ];
     }
 
+    /**
+     * @return BelongsTo<Unit, $this>
+     */
     public function unit(): BelongsTo {
         return $this->belongsTo(Unit::class, 'unit_id', 'id');
     }
 
+    /**
+     * @return BelongsToMany<ItemCategory, $this>
+     */
     public function categories(): BelongsToMany {
         return $this->belongsToMany(ItemCategory::class, 'product_has_category', 'product_id', 'item_category_id')
             ->withPivot('created_at');
@@ -55,12 +75,17 @@ class Product extends Model {
 
     /**
      * Receita: produtos consumidos para produzir uma unidade deste.
+     *
+     * @return BelongsToMany<Product, $this>
      */
     public function components(): BelongsToMany {
         return $this->belongsToMany(self::class, 'product_has_component', 'product_id', 'component_product_id')
             ->withPivot('quantity_required', 'created_at');
     }
 
+    /**
+     * @return HasMany<Item, $this>
+     */
     public function items(): HasMany {
         return $this->hasMany(Item::class, 'product_id', 'id');
     }
@@ -72,6 +97,22 @@ class Product extends Model {
      */
     public function codePrefix(): string {
         return $this->sku ?: 'P' . $this->id;
+    }
+
+    /**
+     * Trava a linha do produto para escrita com `FOR NO KEY UPDATE`, **nunca** `FOR UPDATE`.
+     * Toda inserção com FK para `products` (itens, movimentações, linhas de pacote) pede `FOR KEY SHARE`
+     * na linha do produto. `FOR UPDATE` conflita com ele; `FOR NO KEY UPDATE` não. Com `FOR UPDATE`, a
+     * produção de P (que trava P e depois os itens do componente C) e a entrega de um pacote com C e P
+     * (que trava os itens e depois grava a movimentação de P) esperavam uma pela outra em ciclo: deadlock
+     * reproduzido em `tests/Concurrency/StockConcurrencyTest.php`. Duas escritas no mesmo produto
+     * continuam serializadas (`NO KEY UPDATE` conflita com ele mesmo).
+     *
+     * @param  Builder<self>  $query
+     */
+    #[Scope]
+    protected function lockedForWrite(Builder $query): void {
+        $query->lock('for no key update');
     }
 
     /**
@@ -96,7 +137,7 @@ class Product extends Model {
             )
             ->selectSub(
                 DB::table('items')->whereColumn('items.product_id', 'products.id')
-                    ->where('items.expires_at', '<', now()->toDateString())
+                    ->where('items.expires_at', '<', business_today())
                     ->selectRaw('COALESCE(SUM(items.quantity), 0)::numeric(15, 4)'),
                 'expired_quantity'
             )
@@ -114,7 +155,7 @@ class Product extends Model {
     #[Scope]
     protected function search(Builder $query, ?string $search): void {
         $query->when($search, fn(Builder $query) => $query->where(fn(Builder $query) => $query
-            ->whereLike('products.name', '%' . $search . '%')
-            ->orWhereLike('products.sku', '%' . $search . '%')));
+            ->whereLike('products.name', '%' . escape_like($search) . '%')
+            ->orWhereLike('products.sku', '%' . escape_like($search) . '%')));
     }
 }

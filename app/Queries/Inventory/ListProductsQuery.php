@@ -2,7 +2,6 @@
 
 namespace App\Queries\Inventory;
 
-use App\Actions\Inventory\Product\ProductRelations;
 use App\Data\Common\ListPageDTO;
 use App\Models\Inventory\Product;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -20,7 +19,7 @@ final class ListProductsQuery {
             ->search($dto->search)
             ->withStock()
             ->with([
-                ...ProductRelations::ALL,
+                ...Product::RESPONSE_RELATIONS,
                 'components' => fn($query) => $query->withStock(),
             ])
             ->orderBy('name')

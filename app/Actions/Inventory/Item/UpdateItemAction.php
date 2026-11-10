@@ -52,13 +52,13 @@ final class UpdateItemAction {
                 $previous_quantity = $item->quantity;
                 $previous_storage_id = $item->storage_id;
 
-                $item->update($attributes);
-                $item->touch();
+                // Uma escrita só: grava os campos e o `updated_at` (mesmo quando os valores não mudam).
+                $item->fill($attributes)->touch();
 
                 $this->recordMovements($item, $previous_quantity, $previous_storage_id);
 
                 return Item::query()->withReservedQuantity()->with(['product.unit', 'storage'])->findOrFail($item->id);
-            });
+            }, attempts: config('database.transaction_attempts'));
         } catch (QueryException $exception) {
             if (is_foreign_key_violation($exception)) {
                 throw new ApiException('messages.items.invalid_reference');
@@ -142,12 +142,18 @@ final class UpdateItemAction {
             default => $dto->quantity,
         };
 
+        // Só `quantity_subtract` deixa o saldo negativo (`quantity` absoluto já é validado >= 0).
         if (bccomp($quantity, '0', self::SCALE) < 0) {
             throw new ApiException('messages.items.insufficient_stock', 422, [
                 'name' => $item->code,
-                'required' => format_decimal($dto->quantity_subtract),
+                'required' => format_decimal((string)$dto->quantity_subtract),
                 'available' => format_decimal($item->quantity),
             ]);
+        }
+
+        // Cada parcela passa no `decimal_rule()`, mas a soma pode estourar a coluna (SQLSTATE 22003 → 500).
+        if (bccomp($quantity, DECIMAL_MAX, self::SCALE) > 0) {
+            throw new ApiException('messages.items.quantity_too_large');
         }
 
         $reserved = (string)(Item::reservedLinesQuery()->where('delivery_package_has_item.item_id', $item->id)->sum('delivery_package_has_item.quantity') ?: '0');

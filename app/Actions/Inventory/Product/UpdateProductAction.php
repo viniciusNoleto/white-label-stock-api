@@ -34,7 +34,7 @@ final class UpdateProductAction {
 
         try {
             return DB::transaction(function () use ($product_id, $dto) {
-                $product = Product::query()->lockForUpdate()->find($product_id)
+                $product = Product::query()->lockedForWrite()->find($product_id)
                     ?? throw new ModelNotFoundException(self::NOT_FOUND);
 
                 if ($product->is_atomic !== $dto->is_atomic && $product->items()->exists()) {
@@ -52,8 +52,8 @@ final class UpdateProductAction {
 
                 $this->syncRelations->handle($product, $dto);
 
-                return Product::query()->withStock()->with([...ProductRelations::ALL, 'components' => fn($query) => $query->withStock()])->findOrFail($product->id);
-            });
+                return Product::query()->withStock()->with([...Product::RESPONSE_RELATIONS, 'components' => fn($query) => $query->withStock()])->findOrFail($product->id);
+            }, attempts: config('database.transaction_attempts'));
         } catch (QueryException $exception) {
             if (is_foreign_key_violation($exception)) {
                 throw new ApiException('messages.products.invalid_reference');

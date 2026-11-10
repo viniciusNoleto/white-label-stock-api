@@ -24,6 +24,7 @@ final class ConsumeItemStockAction {
             return;
         }
 
-        Item::query()->whereKey($item->id)->decrement('quantity', $quantity);
+        // Decimal como string de propósito (o Postgres faz a conta em numeric, sem passar por float).
+        Item::query()->whereKey($item->id)->decrement('quantity', $quantity); // @phpstan-ignore argument.type
     }
 }

@@ -6,10 +6,10 @@ use App\Base\Http\Controllers\BaseController;
 use App\Data\Inventory\Stock\ListStockDTO;
 use App\Http\Resources\Inventory\StockRowResource;
 use App\Queries\Inventory\ListStockQuery;
-use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 class StockController extends BaseController {
 
@@ -20,23 +20,15 @@ class StockController extends BaseController {
      * @param ListStockQuery $query
      * @return JsonResponse|Response
      */
-    public function index(Request $request, ListStockQuery $query) {
+    public function index(Request $request, ListStockQuery $query): JsonResponse|Response {
         try {
             $dto = ListStockDTO::fromRequest($request);
             $paginator = $query->get($dto);
 
             return self::successResponse(
-                data: [
-                    'items' => StockRowResource::collection($paginator->items()),
-                    'meta' => [
-                        'page' => $dto->page,
-                        'per_page' => $dto->per_page,
-                        'total' => $paginator->total(),
-                        'last_page' => max(1, $paginator->lastPage()),
-                    ],
-                ]
+                data: self::paginated($paginator, StockRowResource::class)
             );
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             return self::returnError($exception, 'messages.stock.fetch_error');
         }
     }

@@ -11,10 +11,10 @@ use App\Data\Inventory\Unit\SaveUnitDTO;
 use App\Http\Requests\Unit\SaveUnitRequest;
 use App\Http\Resources\Inventory\UnitResource;
 use App\Models\Inventory\Unit;
-use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 class UnitController extends BaseController {
 
@@ -24,7 +24,7 @@ class UnitController extends BaseController {
      * @param Request $request
      * @return JsonResponse|Response
      */
-    public function index(Request $request) {
+    public function index(Request $request): JsonResponse|Response {
         try {
             $dto = ListPageDTO::fromRequest($request);
             $paginator = Unit::query()
@@ -33,17 +33,9 @@ class UnitController extends BaseController {
                 ->paginate(perPage: $dto->per_page, page: $dto->page);
 
             return self::successResponse(
-                data: [
-                    'items' => UnitResource::collection($paginator->items()),
-                    'meta' => [
-                        'page' => $dto->page,
-                        'per_page' => $dto->per_page,
-                        'total' => $paginator->total(),
-                        'last_page' => max(1, $paginator->lastPage()),
-                    ],
-                ]
+                data: self::paginated($paginator, UnitResource::class)
             );
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             return self::returnError($exception, 'messages.units.fetch_error');
         }
     }
@@ -53,14 +45,14 @@ class UnitController extends BaseController {
      * @param CreateUnitAction $action
      * @return JsonResponse|Response
      */
-    public function store(SaveUnitRequest $request, CreateUnitAction $action) {
+    public function store(SaveUnitRequest $request, CreateUnitAction $action): JsonResponse|Response {
         try {
             return self::successResponse(
                 data: UnitResource::make($action->handle(SaveUnitDTO::fromRequest($request))),
                 message: 'messages.units.created',
                 status_code: 201
             );
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             return self::returnError($exception, 'messages.units.create_error');
         }
     }
@@ -71,13 +63,13 @@ class UnitController extends BaseController {
      * @param string $unit_id
      * @return JsonResponse|Response
      */
-    public function update(SaveUnitRequest $request, UpdateUnitAction $action, string $unit_id) {
+    public function update(SaveUnitRequest $request, UpdateUnitAction $action, string $unit_id): JsonResponse|Response {
         try {
             return self::successResponse(
                 data: UnitResource::make($action->handle($unit_id, SaveUnitDTO::fromRequest($request))),
                 message: 'messages.units.updated'
             );
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             return self::returnError($exception, 'messages.units.update_error');
         }
     }
@@ -87,12 +79,12 @@ class UnitController extends BaseController {
      * @param string $unit_id
      * @return JsonResponse|Response
      */
-    public function destroy(DeleteUnitAction $action, string $unit_id) {
+    public function destroy(DeleteUnitAction $action, string $unit_id): JsonResponse|Response {
         try {
             $action->handle($unit_id);
 
             return self::successResponse(message: 'messages.units.deleted');
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             return self::returnError($exception, 'messages.units.delete_error');
         }
     }

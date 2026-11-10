@@ -20,7 +20,7 @@ final class UpdateDeliveryPackageAction {
     }
 
     /**
-     * Substitui anotações e itens. Pacote entregue não pode ser editado (o estoque já saiu).
+     * Substitui destinatário, anotações e itens (o autor fica o de quem criou). Pacote entregue não pode ser editado (o estoque já saiu).
      * A linha do pacote fica travada: não dá para editar e entregar ao mesmo tempo.
      *
      * @param mixed $id
@@ -39,12 +39,11 @@ final class UpdateDeliveryPackageAction {
                 throw new ApiException('messages.delivery_packages.already_delivered');
             }
 
-            $package->update(['notes' => $dto->notes]);
-            $package->touch();
+            $package->fill(['notes' => $dto->notes, 'recipient' => $dto->recipient])->touch();
 
             $this->syncItems->handle($package, $dto->items);
 
             return $package->fresh(ListDeliveryPackagesQuery::relations());
-        });
+        }, attempts: config('database.transaction_attempts'));
     }
 }

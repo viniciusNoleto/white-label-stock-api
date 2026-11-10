@@ -49,7 +49,7 @@ class SaveProductDTO extends Data {
             components: collect($request->validated('components') ?? [])
                 ->map(fn($component) => [
                     'id' => (int)$component['id'],
-                    'quantity_required' => number_format((float)$component['quantity_required'], 4, '.', ''),
+                    'quantity_required' => to_decimal($component['quantity_required']),
                 ])
                 ->values()
                 ->all(),

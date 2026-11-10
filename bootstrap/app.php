@@ -1,6 +1,8 @@
 <?php
 
 use App\Base\Traits\Response as ResponseTrait;
+use App\Exceptions\ApiException;
+use App\Http\Middleware\AssignRequestIdMiddleware;
 use App\Http\Middleware\AuthenticateMiddleware;
 use App\Http\Middleware\EnsureAdminMiddleware;
 use App\Http\Middleware\ForceJsonMiddleware;
@@ -21,13 +23,16 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin' => EnsureAdminMiddleware::class,
         ]);
 
-        // Atrás do nginx (e do proxy do web): respeita X-Forwarded-For/Proto.
-        $middleware->trustProxies(at: '*');
+        // Proxies confiáveis (X-Forwarded-For/Proto): `config/trustedproxy.php`.
 
-        $middleware->prepend(ForceJsonMiddleware::class);
+        $middleware->prepend([AssignRequestIdMiddleware::class, ForceJsonMiddleware::class]);
         $middleware->api(prepend: [RejectMalformedJsonMiddleware::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Regra de negócio não é erro do sistema: não polui o log.
+        $exceptions->dontReport(ApiException::class);
+        $exceptions->dontReportDuplicates();
+
         $exceptions->render(function (Throwable $throwable) {
             return ResponseTrait::returnError($throwable);
         });

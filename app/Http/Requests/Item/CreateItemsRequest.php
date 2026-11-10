@@ -14,9 +14,9 @@ class CreateItemsRequest extends BaseRequest {
     public function rules(): array {
         return [
             'product_id' => 'required|integer|min:1',
-            'quantity' => 'nullable|numeric|gt:0',
+            'quantity' => 'nullable|' . decimal_rule() . '|gt:0',
             'produced_at' => 'nullable|date_format:Y-m-d',
-            'storage_id' => 'nullable',
+            'storage_id' => 'nullable|integer|min:1',
             'consume_components' => 'nullable|boolean',
         ];
     }
@@ -29,6 +29,8 @@ class CreateItemsRequest extends BaseRequest {
             'product_id.*' => 'messages.items.product_required',
             'quantity.*' => 'messages.items.invalid_quantity',
             'produced_at.*' => 'messages.items.invalid_date',
+            'storage_id.*' => 'messages.items.invalid_storage',
+            'consume_components.*' => 'messages.invalid_payload',
         ];
     }
 }

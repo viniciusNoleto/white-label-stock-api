@@ -5,7 +5,6 @@
  * 2 chapas de MDF castanho. Chapas e armários são atômicos (cada um com código); parafusos são a granel.
  * Tudo pela API, como o web faria.
  */
-
 beforeEach(function () {
     $this->withToken(accessToken());
 });
@@ -82,11 +81,16 @@ it('produces cabinets from the recipe, groups them in the operation view and fin
     $this->patchJson("/api/items/{$found[0]['id']}", ['storage_id' => $depot])->assertOk();
 
     // Venda de 1 armário: o pacote diz qual pegar e a entrega tira só ele do estoque.
-    $package = $this->postJson('/api/delivery-packages', ['items' => [['product_id' => $cabinet['id'], 'quantity' => 1]], 'notes' => 'Cliente: Ana'])
+    $package = $this->postJson('/api/delivery-packages', [
+        'items' => [['product_id' => $cabinet['id'], 'quantity' => 1]],
+        'recipient' => 'Ana Souza',
+        'notes' => 'Entregar à tarde',
+    ])
         ->assertCreated()
         ->json('data');
 
-    expect($package['items'][0]['allocations'][0]['code'])->toBe('ARM-A-0001');
+    expect($package['items'][0]['allocations'][0]['code'])->toBe('ARM-A-0001')
+        ->and($package['recipient'])->toBe('Ana Souza');
 
     $this->postJson("/api/delivery-packages/{$package['id']}/deliver")->assertOk();
 

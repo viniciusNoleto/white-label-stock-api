@@ -3,10 +3,11 @@
 namespace App\Actions\Inventory\StockMovement;
 
 use App\Enum\Inventory\StockMovementTypeEnum;
+use App\Enum\Inventory\WriteOffReasonEnum;
 use App\Models\Inventory\Item;
 use App\Models\Inventory\Product;
-use App\Models\Inventory\Storage;
 use App\Models\Inventory\StockMovement;
+use App\Models\Inventory\Storage;
 use Illuminate\Support\Facades\Auth;
 
 final class RecordStockMovementsAction {
@@ -19,8 +20,8 @@ final class RecordStockMovementsAction {
      *
      * @param StockMovementTypeEnum $type
      * @param Product $product
-     * @param array<int, array{item: Item, quantity: string, balance: string, previous_storage_id?: int|null}> $entries
-     *        `quantity` com sinal; `balance` = quantidade do item depois da movimentação
+     * @param array<int, array{item: Item, quantity: string, balance: string, previous_storage_id?: int|null, reason?: WriteOffReasonEnum|null}> $entries
+     *        `quantity` com sinal; `balance` = quantidade do item depois da movimentação; `reason` só na baixa
      * @param int|null $delivery_package_id
      * @return void
      */
@@ -54,6 +55,7 @@ final class RecordStockMovementsAction {
             'storage_id' => $entry['item']->storage_id,
             'storage_name' => $entry['item']->storage_id ? $storages->get($entry['item']->storage_id) : null,
             'previous_storage_name' => isset($entry['previous_storage_id']) ? $storages->get($entry['previous_storage_id']) : null,
+            'reason' => isset($entry['reason']) ? $entry['reason']->value : null,
             'delivery_package_id' => $delivery_package_id,
             'user_id' => $user?->id,
             'user_name' => $user?->name,

@@ -18,7 +18,15 @@ services:
       - white-label-stock-api-network
       - proxy
     depends_on:
-      - php-fpm
+      php-fpm:
+        condition: service_healthy
+    # `/up` só responde 200 se o Laravel e o Postgres responderem.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/up > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   php-fpm:
     container_name: white-label-stock-api-php
@@ -38,10 +46,35 @@ services:
     depends_on:
       pgsql:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Tarefas agendadas (routes/console.php), como a limpeza diária de tokens vencidos.
+  scheduler:
+    container_name: white-label-stock-api-scheduler
+    build:
+      context: .docker/php
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["php", "artisan", "schedule:work"]
+    environment:
+      TZ: "${APP_TIMEZONE:-UTC}"
+    volumes:
+      - .:/var/www/html
+      - ./.docker/php/php.ini:/usr/local/etc/php/php.ini
+    networks:
+      - white-label-stock-api-network
+    depends_on:
+      pgsql:
+        condition: service_healthy
 
   pgsql:
     container_name: white-label-stock-api-postgres
-    image: postgres:16-alpine
+    image: postgres:16.14-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_DATABASE}

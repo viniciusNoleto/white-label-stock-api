@@ -17,7 +17,21 @@ return [
     |
     */
 
-    'default' => env('DB_CONNECTION', 'sqlite'),
+    'default' => env('DB_CONNECTION', 'pgsql'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Transaction Attempts
+    |--------------------------------------------------------------------------
+    |
+    | How many times the stock-changing transactions run when Postgres aborts
+    | them for a deadlock or serialization failure. Locks are always taken in
+    | the same global order (`Item::lockedInStockOrder`), so this is a safety
+    | net; what still fails after the last attempt answers 409, not 500.
+    |
+    */
+
+    'transaction_attempts' => (int)env('DB_TRANSACTION_ATTEMPTS', 3),
 
     /*
     |--------------------------------------------------------------------------
@@ -97,6 +111,14 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // Enviados no DSN (`-c nome=valor`), sem consulta extra por conexão. Uma transação que
+            // espera um lock por mais de `lock_timeout` falha com 55P03 (→ 409 "tente de novo") em
+            // vez de prender o worker do php-fpm; uma consulta que passa de `statement_timeout` é
+            // cancelada (57014 → 500 logado). `0` desliga.
+            'server_options' => [
+                'lock_timeout' => env('DB_LOCK_TIMEOUT', '5s'),
+                'statement_timeout' => env('DB_STATEMENT_TIMEOUT', '30s'),
+            ],
         ],
 
         'sqlsrv' => [
@@ -149,7 +171,7 @@ return [
 
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),
-            'prefix' => env('REDIS_PREFIX', Str::slug((string) env('APP_NAME', 'laravel')).'-database-'),
+            'prefix' => env('REDIS_PREFIX', Str::slug((string)env('APP_NAME', 'laravel')) . '-database-'),
             'persistent' => env('REDIS_PERSISTENT', false),
         ],
 

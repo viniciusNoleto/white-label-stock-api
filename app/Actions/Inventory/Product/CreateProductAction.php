@@ -36,8 +36,8 @@ final class CreateProductAction {
 
                 $this->syncRelations->handle($product, $dto);
 
-                return Product::query()->withStock()->with([...ProductRelations::ALL, 'components' => fn($query) => $query->withStock()])->findOrFail($product->id);
-            });
+                return Product::query()->withStock()->with([...Product::RESPONSE_RELATIONS, 'components' => fn($query) => $query->withStock()])->findOrFail($product->id);
+            }, attempts: config('database.transaction_attempts'));
         } catch (QueryException $exception) {
             if (is_foreign_key_violation($exception)) {
                 throw new ApiException('messages.products.invalid_reference');

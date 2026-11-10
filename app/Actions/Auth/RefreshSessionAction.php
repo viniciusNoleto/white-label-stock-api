@@ -70,7 +70,7 @@ final class RefreshSessionAction {
 
         return new SessionDTO(
             user: $user,
-            access_token: $this->createAccessToken->handle($user->id),
+            access_token: $this->createAccessToken->handle($user->id, $new_refresh_token->family_id),
             refresh_token: $new_refresh_token
         );
     }

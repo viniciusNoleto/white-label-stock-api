@@ -15,8 +15,8 @@ final class AllocateProductStockAction {
      * (`quantidade − reservado em pacotes pendentes`) e dentro da validade (vencido não vai para
      * produção nem entrega), em ordem FEFO: vence primeiro, sai primeiro.
      * Atômico → `$quantity` itens inteiros; a granel → quantos lotes forem precisos.
-     * Os itens do produto ficam travados até o fim da transação (deve rodar dentro de uma):
-     * duas operações simultâneas não conseguem usar o mesmo estoque.
+     * Os itens utilizáveis do produto ficam travados até o fim da transação (deve rodar dentro de
+     * uma): duas operações simultâneas não conseguem usar o mesmo estoque.
      *
      * @param Product $product
      * @param string $quantity com 4 casas
@@ -29,11 +29,12 @@ final class AllocateProductStockAction {
             throw new ApiException('messages.items.atomic_integer', 422, ['name' => $product->name]);
         }
 
-        // Trava na ordem do id (evita deadlock) e ordena em memória por FEFO.
+        // Só trava o que pode sair (com saldo e não vencido), na ordem global de locks
+        // (`Item::lockedInStockOrder`); a ordem FEFO é feita em memória.
         $items = Item::query()
             ->where('product_id', $product->id)
-            ->orderBy('id')
-            ->lockForUpdate()
+            ->usable()
+            ->lockedInStockOrder()
             ->get();
 
         $reserved = Item::reservedLinesQuery()
@@ -48,9 +49,6 @@ final class AllocateProductStockAction {
             fn(Item $a, Item $b) => $a->produced_at->getTimestamp() <=> $b->produced_at->getTimestamp(),
             fn(Item $a, Item $b) => $a->id <=> $b->id,
         ]);
-
-        $today = now()->startOfDay();
-        $ordered = $ordered->reject(fn(Item $item) => $item->expires_at !== null && $item->expires_at->lt($today));
 
         $remaining = $quantity;
         $available = '0';

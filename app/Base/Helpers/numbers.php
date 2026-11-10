@@ -1,5 +1,10 @@
 <?php
 
+if (!defined('DECIMAL_MAX')) {
+    /** Maior valor que cabe numa coluna `decimal(15, 4)`: 11 dígitos inteiros e 4 casas. */
+    define('DECIMAL_MAX', '99999999999.9999');
+}
+
 if (!function_exists('parse_id')) {
     /**
      * Converte um id vindo da rota/payload em inteiro positivo; `null` quando não é um id válido.
@@ -20,17 +25,51 @@ if (!function_exists('parse_id')) {
     }
 }
 
+if (!function_exists('to_decimal')) {
+    /**
+     * Normaliza um decimal **já validado** (`decimal_rule()`) para string com `$scale` casas, sem passar
+     * por `float` quando ele chega como string: `"2.5"` → `"2.5000"`, `3` → `"3.0000"`.
+     * Número JSON (float) já perdeu precisão no `json_decode`; com no máximo 4 casas e 15 dígitos
+     * (o que a validação garante), o `sprintf` devolve exatamente o valor digitado.
+     *
+     * @param int|float|string $value
+     * @param int $scale
+     * @return string
+     */
+    function to_decimal(int|float|string $value, int $scale = 4): string {
+        if (is_float($value)) {
+            return sprintf('%.' . $scale . 'F', $value);
+        }
+
+        return bcadd(trim((string)$value), '0', $scale);
+    }
+}
+
+if (!function_exists('decimal_rule')) {
+    /**
+     * Regra de validação dos decimais gravados em `decimal(15, 4)`: numérico, no máximo 4 casas
+     * (`0.00001` não vira zero em silêncio) e no máximo 11 dígitos inteiros (`1e20` não estoura a
+     * coluna com 500). Notação científica é recusada pelo `decimal`.
+     *
+     * @return string
+     */
+    function decimal_rule(): string {
+        return 'numeric|decimal:0,4|max:' . DECIMAL_MAX;
+    }
+}
+
 if (!function_exists('format_decimal')) {
     /**
      * Decimal sem zeros à direita, para mensagens: `"16.0000"` → `"16"`, `"2.5000"` → `"2.5"`.
+     * Só bcmath/string, como o resto das contas: `(float)` arredondaria `"99999999999.9999"`.
      *
-     * @param string|int|float $value
+     * @param string|int $value decimal em string (ou inteiro)
      * @return string
      */
-    function format_decimal(string|int|float $value): string {
-        $formatted = number_format((float)$value, 4, '.', '');
+    function format_decimal(string|int $value): string {
+        $formatted = bcadd(trim((string)$value), '0', 4);
 
-        return rtrim(rtrim($formatted, '0'), '.');
+        return str_contains($formatted, '.') ? rtrim(rtrim($formatted, '0'), '.') : $formatted;
     }
 }
 

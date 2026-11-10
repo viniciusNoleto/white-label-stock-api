@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Inventory;
 
+use App\Models\Inventory\StockMovement;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -10,6 +11,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * some; código e nomes copiados na hora continuam.
  * `quantity` com sinal (positivo entra, negativo sai, `"0.0000"` = transferência); `balance` =
  * quantidade do item logo depois.
+ *
+ * @mixin StockMovement
  */
 class StockMovementResource extends JsonResource {
 
@@ -30,6 +33,7 @@ class StockMovementResource extends JsonResource {
             'storage_id' => $this->storage_id,
             'storage_name' => $this->storage_name,
             'previous_storage_name' => $this->previous_storage_name,
+            'reason' => $this->reason?->value,
             'delivery_package_id' => $this->delivery_package_id,
             'user_id' => $this->user_id,
             'user_name' => $this->user_name,

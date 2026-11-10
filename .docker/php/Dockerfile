@@ -1,4 +1,5 @@
-FROM php:8.5-fpm
+# Versões fixas (atualizadas pelo Dependabot): o mesmo Dockerfile gera a mesma imagem amanhã.
+FROM php:8.5.12-fpm
 
 WORKDIR /var/www/html
 
@@ -20,7 +21,7 @@ RUN apt-get update && apt-get install -y \
 RUN docker-php-ext-install pdo pdo_pgsql pgsql zip mbstring bcmath intl pcntl
 
 # Composer
-COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
+COPY --from=composer:2.10.3 /usr/bin/composer /usr/local/bin/composer
 
 # Usuário com o mesmo uid/gid do host: arquivos criados pelo container (vendor, logs) continuam editáveis
 ARG UID=1000

@@ -44,7 +44,7 @@ class RegistrationRequest extends Model {
     #[Scope]
     protected function search(Builder $query, ?string $search): void {
         $query->when($search, fn(Builder $query) => $query->where(
-            fn(Builder $query) => $query->whereLike('name', '%' . $search . '%')->orWhereLike('email', '%' . $search . '%')
+            fn(Builder $query) => $query->whereLike('name', '%' . escape_like($search) . '%')->orWhereLike('email', '%' . escape_like($search) . '%')
         ));
     }
 }

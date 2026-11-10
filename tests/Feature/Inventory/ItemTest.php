@@ -4,6 +4,7 @@ use App\Models\Delivery\DeliveryPackage;
 use App\Models\Delivery\DeliveryPackageLine;
 use App\Models\Inventory\Item;
 use App\Models\Inventory\Product;
+use App\Models\Inventory\StockMovement;
 use App\Models\Inventory\Storage;
 use App\Models\Inventory\Unit;
 use Illuminate\Support\Carbon;
@@ -119,7 +120,36 @@ describe('POST /api/items', function () {
         'no product' => [[], 'Select the product.'],
         'zero quantity' => [['product_id' => 1, 'quantity' => 0], 'Invalid quantity.'],
         'bad date' => [['product_id' => 1, 'produced_at' => '09/11/2026'], 'Invalid date. Use the YYYY-MM-DD format.'],
+        // Mais casas que a coluna: antes virava 0.0000 em silêncio.
+        'five decimal places' => [['product_id' => 1, 'quantity' => '0.00001'], 'Invalid quantity.'],
+        'five decimal places (number)' => [['product_id' => 1, 'quantity' => 0.00001], 'Invalid quantity.'],
+        // Maior que decimal(15,4): antes estourava a coluna com 500.
+        'too large' => [['product_id' => 1, 'quantity' => '100000000000'], 'Invalid quantity.'],
+        'scientific notation' => [['product_id' => 1, 'quantity' => 1e20], 'Invalid quantity.'],
+        'storage is not an id' => [['product_id' => 1, 'storage_id' => 'abc'], 'Invalid storage.'],
     ]);
+
+    it('keeps the exact decimal typed, without going through float', function (mixed $quantity, string $stored) {
+        generateItems(['product_id' => Product::factory()->bulk()->create()->id, 'quantity' => $quantity])
+            ->assertCreated()
+            ->assertJsonPath('data.items.0.quantity', $stored);
+    })->with([
+        ['0.0001', '0.0001'],
+        ['99999999999.9999', '99999999999.9999'],
+        [2.5, '2.5000'],
+        ['12', '12.0000'],
+    ]);
+
+    it('defaults the production date to today in the business timezone', function () {
+        config(['app.business_timezone' => 'America/Sao_Paulo']);
+        // 23h30 de 08/11 em São Paulo; em UTC já é 09/11.
+        Carbon::setTestNow('2026-11-09 02:30:00');
+
+        generateItems(['product_id' => Product::factory()->create(['shelf_life_days' => 1])->id])
+            ->assertCreated()
+            ->assertJsonPath('data.items.0.produced_at', '2026-11-08')
+            ->assertJsonPath('data.items.0.expires_at', '2026-11-09');
+    });
 
     it('returns 422 for references that do not exist', function (bool $unknownProduct) {
         $product = Product::factory()->create();
@@ -247,6 +277,18 @@ describe('GET /api/items', function () {
             ]);
     });
 
+    it('treats LIKE wildcards in the search as plain text', function () {
+        $product = Product::factory()->create();
+        Item::factory()->create(['product_id' => $product->id, 'code' => 'A_1']);
+        Item::factory()->create(['product_id' => $product->id, 'code' => 'AB1']);
+
+        $codes = fn(string $query) => collect(listStockItems($query)->json('data.items'))->pluck('code')->all();
+
+        // Sem escape, `_` casa com qualquer caractere e `%` com qualquer texto.
+        expect($codes('?search=A_'))->toBe(['A_1'])
+            ->and($codes('?search=%25'))->toBe([]);
+    });
+
     it('filters by code, product, storage, expiration and exact expiration date', function () {
         $storage = Storage::factory()->create();
         $cake = Product::factory()->create(['name' => 'Bolo de chocolate', 'sku' => 'CHOC']);
@@ -320,6 +362,16 @@ describe('PATCH /api/items/{item_id}', function () {
             ->assertJsonPath('message.en-us', "Insufficient stock of \"{$item->code}\". Required: 1, Available: 0.");
     });
 
+    it('answers 422, not 500, when adding would overflow the decimal(15,4) column', function () {
+        $item = Item::factory()->create(['product_id' => Product::factory()->bulk()->create()->id, 'quantity' => '99999999999']);
+
+        $this->patchJson("/api/items/{$item->id}", ['quantity_add' => '99999999999'])
+            ->assertUnprocessable()
+            ->assertJsonPath('message.en-us', 'The quantity would exceed the limit of 99,999,999,999.9999.');
+
+        expect($item->fresh()->quantity)->toBe('99999999999.0000');
+    });
+
     it('does not go below what is reserved', function () {
         $item = Item::factory()->create(['product_id' => Product::factory()->bulk()->create()->id, 'quantity' => '10']);
         reserve($item, '4');
@@ -351,7 +403,29 @@ describe('PATCH /api/items/{item_id}', function () {
         'negative' => [['quantity' => -1], 'Invalid quantity.'],
         'only the code' => [['code' => 'NEW'], 'No fields to update were provided.'],
         'bad date' => [['expires_at' => '2026-13-01'], 'Invalid date. Use the YYYY-MM-DD format.'],
+        'five decimal places' => [['quantity_add' => '0.00001'], 'Invalid quantity.'],
+        'too large' => [['quantity' => '100000000000'], 'Invalid quantity.'],
     ]);
+
+    it('rejects a storage that is not an id instead of silently unlinking it', function (mixed $storage_id) {
+        $storage = Storage::factory()->create();
+        $item = Item::factory()->create(['storage_id' => $storage->id]);
+
+        $this->patchJson("/api/items/{$item->id}", ['storage_id' => $storage_id])
+            ->assertUnprocessable()
+            ->assertJsonPath('message.en-us', 'Invalid storage.');
+
+        expect($item->fresh()->storage_id)->toBe($storage->id)
+            ->and(StockMovement::count())->toBe(0);
+    })->with(['abc', 0, -1, 1.5, [[1]]]);
+
+    it('still unlinks the storage with an explicit null', function () {
+        $item = Item::factory()->create(['storage_id' => Storage::factory()->create()->id]);
+
+        $this->patchJson("/api/items/{$item->id}", ['storage_id' => null])
+            ->assertOk()
+            ->assertJsonPath('data.storage', null);
+    });
 
     it('never changes the code', function () {
         $item = Item::factory()->create(['code' => 'KEEP']);

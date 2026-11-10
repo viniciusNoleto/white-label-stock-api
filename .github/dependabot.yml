@@ -1,0 +1,29 @@
+# Atualizações semanais em PRs pequenos: as versões ficam fixas (lockfile, tags de imagem, SHAs das
+# Actions) e quem sobe a versão é um PR que passa pelo CI, não o próximo `docker build`.
+version: 2
+updates:
+  - package-ecosystem: composer
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      dev-dependencies:
+        dependency-type: development
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directories:
+      - /.docker/php
+      - /.docker/nginx
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly

@@ -29,8 +29,12 @@ final class DeliverDeliveryPackageAction {
     /**
      * Marca o pacote como entregue e tira do estoque os itens reservados (atômicos saem do
      * estoque; lotes a granel têm a quantidade subtraída), cada linha registrada como movimentação
-     * de entrega. Pacote e itens ficam travados até o
-     * fim da transação: o mesmo pacote não é entregue duas vezes e o saldo nunca fica negativo.
+     * de entrega. Pacote e itens ficam travados até o fim da transação: o mesmo pacote não é
+     * entregue duas vezes e o saldo nunca fica negativo.
+     *
+     * A validade é conferida de novo aqui: o item pode ter sido reservado válido e vencido antes da
+     * entrega. Item vencido no pacote → 422 com o código; o usuário edita o pacote (a reserva FEFO
+     * troca por um válido) e entrega.
      *
      * @param mixed $id
      * @return DeliveryPackage
@@ -47,24 +51,29 @@ final class DeliverDeliveryPackageAction {
                 throw new ApiException('messages.delivery_packages.already_delivered');
             }
 
-            $lines = $package->lines()->with('product.unit')->orderBy('id')->get();
+            $lines = $package->lines()->with('product.unit')->orderBy('product_id')->orderBy('id')->get();
 
-            // Sempre na mesma ordem (id), evitando deadlock entre operações simultâneas.
+            // Mesma ordem global de locks da reserva (`Item::lockedInStockOrder`): produto, depois item.
             $stock = Item::query()
                 ->whereIn('id', $lines->pluck('item_id')->filter()->all())
-                ->orderBy('id')
-                ->lockForUpdate()
+                ->lockedInStockOrder()
                 ->get()
                 ->keyBy('id');
 
+            $today = business_today();
+
             foreach ($lines as $line) {
                 $item = $line->item_id ? $stock->get($line->item_id) : null;
+
+                if ($item?->isExpired($today)) {
+                    throw new ApiException('messages.delivery_packages.expired_items', 422, ['code' => $item->code]);
+                }
 
                 if (!$item || bccomp($item->quantity, $line->quantity, self::SCALE) < 0) {
                     throw new ApiException('messages.items.insufficient_stock', 422, [
                         'name' => $line->product->name,
                         'required' => format_decimal($line->quantity),
-                        'available' => format_decimal($item?->quantity ?? '0'),
+                        'available' => format_decimal($item->quantity ?? '0'),
                     ]);
                 }
 
@@ -84,6 +93,6 @@ final class DeliverDeliveryPackageAction {
             ]);
 
             return $package->fresh(ListDeliveryPackagesQuery::relations());
-        });
+        }, attempts: config('database.transaction_attempts'));
     }
 }

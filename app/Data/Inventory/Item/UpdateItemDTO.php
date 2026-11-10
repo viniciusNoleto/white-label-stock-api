@@ -29,7 +29,7 @@ class UpdateItemDTO extends Data {
      * @return UpdateItemDTO
      */
     public static function fromRequest(UpdateItemRequest $request): UpdateItemDTO {
-        $decimal = fn(string $key) => $request->validated($key) === null ? null : number_format((float)$request->validated($key), 4, '.', '');
+        $decimal = fn(string $key) => $request->validated($key) === null ? null : to_decimal($request->validated($key));
 
         return new self(
             produced_at: $request->validated('produced_at'),

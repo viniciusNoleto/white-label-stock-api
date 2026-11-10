@@ -9,10 +9,10 @@ use App\Data\Common\ListPageDTO;
 use App\Http\Resources\User\RegistrationRequestResource;
 use App\Http\Resources\User\UserResource;
 use App\Models\Auth\RegistrationRequest;
-use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 /**
  * Pedidos de cadastro (`POST /api/auth/register`) aguardando aprovação. Só admins (middleware `admin`).
@@ -25,7 +25,7 @@ class RegistrationRequestController extends BaseController {
      * @param Request $request
      * @return JsonResponse|Response
      */
-    public function index(Request $request) {
+    public function index(Request $request): JsonResponse|Response {
         try {
             $dto = ListPageDTO::fromRequest($request);
             $paginator = RegistrationRequest::query()
@@ -35,17 +35,9 @@ class RegistrationRequestController extends BaseController {
                 ->paginate(perPage: $dto->per_page, page: $dto->page);
 
             return self::successResponse(
-                data: [
-                    'items' => RegistrationRequestResource::collection($paginator->items()),
-                    'meta' => [
-                        'page' => $dto->page,
-                        'per_page' => $dto->per_page,
-                        'total' => $paginator->total(),
-                        'last_page' => max(1, $paginator->lastPage()),
-                    ],
-                ]
+                data: self::paginated($paginator, RegistrationRequestResource::class)
             );
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             return self::returnError($exception, 'messages.registration_requests.fetch_error');
         }
     }
@@ -55,14 +47,14 @@ class RegistrationRequestController extends BaseController {
      * @param string $registration_request_id
      * @return JsonResponse|Response
      */
-    public function approve(ApproveRegistrationRequestAction $action, string $registration_request_id) {
+    public function approve(ApproveRegistrationRequestAction $action, string $registration_request_id): JsonResponse|Response {
         try {
             return self::successResponse(
                 data: UserResource::make($action->handle($registration_request_id)),
                 message: 'messages.registration_requests.approved',
                 status_code: 201
             );
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             return self::returnError($exception, 'messages.registration_requests.approve_error');
         }
     }
@@ -74,12 +66,12 @@ class RegistrationRequestController extends BaseController {
      * @param string $registration_request_id
      * @return JsonResponse|Response
      */
-    public function destroy(RejectRegistrationRequestAction $action, string $registration_request_id) {
+    public function destroy(RejectRegistrationRequestAction $action, string $registration_request_id): JsonResponse|Response {
         try {
             $action->handle($registration_request_id);
 
             return self::successResponse(message: 'messages.registration_requests.rejected');
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             return self::returnError($exception, 'messages.registration_requests.reject_error');
         }
     }

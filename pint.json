@@ -1,0 +1,39 @@
+{
+    "preset": "laravel",
+    "notPath": [
+        "database/migrations/0001_01_01_000001_create_cache_table.php"
+    ],
+    "rules": {
+        "braces_position": {
+            "classes_opening_brace": "same_line",
+            "functions_opening_brace": "same_line",
+            "anonymous_classes_opening_brace": "same_line",
+            "anonymous_functions_opening_brace": "same_line",
+            "control_structures_opening_brace": "same_line"
+        },
+        "no_blank_lines_after_class_opening": false,
+        "function_declaration": {
+            "closure_fn_spacing": "none",
+            "closure_function_spacing": "one"
+        },
+        "cast_spaces": {
+            "space": "none"
+        },
+        "not_operator_with_successor_space": false,
+        "concat_space": {
+            "spacing": "one"
+        },
+        "no_superfluous_phpdoc_tags": false,
+        "class_attributes_separation": false,
+        "phpdoc_align": false,
+        "binary_operator_spaces": {
+            "default": "single_space",
+            "operators": {
+                "=>": null
+            }
+        },
+        "phpdoc_separation": false,
+        "type_declaration_spaces": false,
+        "single_line_empty_body": false
+    }
+}

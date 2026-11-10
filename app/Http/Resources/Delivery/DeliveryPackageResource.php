@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Delivery;
 
+use App\Models\Delivery\DeliveryPackage;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -9,6 +10,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * Pacote de entrega com os produtos aninhados (`quantity` = quantidade no pacote,
  * `stock_quantity` = estoque atual do produto) e, em cada um, os itens separados
  * (`allocations`: código e quantidade de cada item a pegar).
+ *
+ * @mixin DeliveryPackage
  */
 class DeliveryPackageResource extends JsonResource {
 
@@ -19,7 +22,12 @@ class DeliveryPackageResource extends JsonResource {
         return [
             'id' => $this->id,
             'status' => $this->status->value,
+            'recipient' => $this->recipient,
             'notes' => $this->notes,
+            'created_by' => $this->created_by_user_name === null ? null : [
+                'id' => $this->created_by_user_id,
+                'name' => $this->created_by_user_name,
+            ],
             'delivered_at' => $this->delivered_at,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,

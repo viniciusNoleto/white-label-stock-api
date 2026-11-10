@@ -11,6 +11,9 @@ final class SyncProductRelationsAction {
 
     private const SCALE = 4;
 
+    /** Chave do `pg_advisory_xact_lock` que serializa as edições de receita. */
+    private const RECIPE_LOCK_KEY = 7_301_001;
+
     /**
      * Substitui categorias e receita do produto (as categorias que continuam mantêm o `created_at`).
      * A receita não pode conter o próprio produto nem formar ciclo (A usa B que usa A), e componente
@@ -46,6 +49,11 @@ final class SyncProductRelationsAction {
         if (!$components) {
             return;
         }
+
+        // Serializa as edições de receita: em READ COMMITTED, "A passa a usar B" e "B passa a usar A"
+        // em paralelo enxergariam cada uma o grafo antigo e as duas passariam na busca de ciclo.
+        // O advisory lock vale até o fim da transação e só concorre com outra edição de receita.
+        DB::statement('SELECT pg_advisory_xact_lock(?)', [self::RECIPE_LOCK_KEY]);
 
         $ids = array_column($components, 'id');
         $found = Product::query()->whereIn('id', $ids)->get(['id', 'name', 'is_atomic'])->keyBy('id');

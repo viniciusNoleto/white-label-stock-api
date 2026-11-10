@@ -16,12 +16,13 @@ class UpdateItemRequest extends BaseRequest {
      */
     public function rules(): array {
         return [
-            'quantity' => 'nullable|numeric|min:0',
-            'quantity_add' => 'nullable|numeric|gt:0',
-            'quantity_subtract' => 'nullable|numeric|gt:0',
+            'quantity' => 'nullable|' . decimal_rule() . '|min:0',
+            'quantity_add' => 'nullable|' . decimal_rule() . '|gt:0',
+            'quantity_subtract' => 'nullable|' . decimal_rule() . '|gt:0',
             'produced_at' => 'sometimes|required|date_format:Y-m-d',
             'expires_at' => 'nullable|date_format:Y-m-d',
-            'storage_id' => 'nullable',
+            // `null` desvincula; qualquer outra coisa precisa ser um id (antes, lixo virava `null` em silêncio)
+            'storage_id' => 'nullable|integer|min:1',
         ];
     }
 
@@ -35,6 +36,7 @@ class UpdateItemRequest extends BaseRequest {
             'quantity_subtract.*' => 'messages.items.invalid_quantity',
             'produced_at.*' => 'messages.items.invalid_date',
             'expires_at.*' => 'messages.items.invalid_date',
+            'storage_id.*' => 'messages.items.invalid_storage',
         ];
     }
 

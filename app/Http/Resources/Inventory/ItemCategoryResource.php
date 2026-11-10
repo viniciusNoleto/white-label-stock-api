@@ -2,9 +2,13 @@
 
 namespace App\Http\Resources\Inventory;
 
+use App\Models\Inventory\ItemCategory;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
+/**
+ * @mixin ItemCategory
+ */
 class ItemCategoryResource extends JsonResource {
 
     /**

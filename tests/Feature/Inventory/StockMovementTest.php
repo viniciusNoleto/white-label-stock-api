@@ -137,6 +137,25 @@ describe('recording', function () {
         ]);
     });
 
+    it('records the write-off reason when one is given', function (?string $reason) {
+        $item = Item::factory()->create(['code' => 'BOLO-0001']);
+
+        $this->deleteJson("/api/items/{$item->id}", array_filter(['reason' => $reason]))->assertOk();
+
+        expect(StockMovement::sole()->reason?->value)->toBe($reason);
+    })->with(['expired', 'damaged', 'lost', 'other', null]);
+
+    it('rejects an unknown write-off reason and keeps the item', function () {
+        $item = Item::factory()->create();
+
+        $this->deleteJson("/api/items/{$item->id}", ['reason' => 'stolen?'])
+            ->assertUnprocessable()
+            ->assertJsonPath('message.en-us', 'Invalid write-off reason. Use: expired, damaged, lost or other.');
+
+        expect(Item::find($item->id))->not->toBeNull()
+            ->and(StockMovement::count())->toBe(0);
+    });
+
     it('records the delivery of each line of the package, with the package id', function () {
         $sugar = Product::factory()->bulk()->create();
         $lot = Item::factory()->create(['product_id' => $sugar->id, 'code' => 'ACU', 'quantity' => '5']);
@@ -170,6 +189,28 @@ describe('recording', function () {
     });
 });
 
+describe('ledger reconciliation (runs after every feature test)', function () {
+    it('detects stock changed without a movement', function () {
+        $storage = Storage::factory()->create();
+        $lot = $this->postJson('/api/items', ['product_id' => Product::factory()->bulk()->create()->id, 'quantity' => 10])
+            ->assertCreated()
+            ->json('data.items.0');
+
+        expect(stockLedgerViolations())->toBe([]);
+
+        // O que o ArchitectureTest não pega: uma escrita "por fora" das Actions.
+        Item::query()->whereKey($lot['id'])->update(['quantity' => '7']);
+        expect(stockLedgerViolations())->toHaveCount(1);
+
+        Item::query()->whereKey($lot['id'])->update(['quantity' => '10', 'storage_id' => $storage->id]);
+        expect(stockLedgerViolations())->toHaveCount(1);
+
+        // Volta ao estado do ledger para o `afterEach` global passar.
+        Item::query()->whereKey($lot['id'])->update(['storage_id' => null]);
+        expect(stockLedgerViolations())->toBe([]);
+    });
+});
+
 describe('GET /api/stock-movements', function () {
     it('lists the most recent first, with the exact shape', function () {
         $product = Product::factory()->create(['sku' => 'X']);
@@ -182,7 +223,7 @@ describe('GET /api/stock-movements', function () {
 
         expect(array_keys($response->json('data.items.0')))->toBe([
             'id', 'type', 'item_id', 'item_code', 'product_id', 'product_name', 'unit_abbreviation', 'quantity', 'balance',
-            'storage_id', 'storage_name', 'previous_storage_name', 'delivery_package_id', 'user_id', 'user_name', 'created_at',
+            'storage_id', 'storage_name', 'previous_storage_name', 'reason', 'delivery_package_id', 'user_id', 'user_name', 'created_at',
         ])
             ->and(collect($response->json('data.items'))->pluck('type')->all())->toBe(['write_off', 'entry'])
             ->and($response->json('data.items.0'))->toMatchArray(['item_id' => null, 'item_code' => 'X-0001', 'quantity' => '-1.0000']);
@@ -214,6 +255,28 @@ describe('GET /api/stock-movements', function () {
         listMovements('?per_page=2&page=3')
             ->assertJsonPath('data.meta', ['page' => 3, 'per_page' => 2, 'total' => 5, 'last_page' => 3])
             ->assertJsonCount(1, 'data.items');
+    });
+
+    it('answers how much was lost to expiration in a month', function () {
+        $expired = Item::factory()->create(['code' => 'A']);
+        $damaged = Item::factory()->create(['code' => 'B']);
+        $this->deleteJson("/api/items/{$expired->id}", ['reason' => 'expired'])->assertOk();
+        $this->deleteJson("/api/items/{$damaged->id}", ['reason' => 'damaged'])->assertOk();
+
+        expect(collect(listMovements('?type=write_off&reason=expired&date_from=2026-11-01&date_to=2026-11-30')->json('data.items'))->pluck('item_code')->all())
+            ->toBe(['A']);
+    });
+
+    it('filters dates by the calendar day of the business timezone', function () {
+        config(['app.business_timezone' => 'America/Sao_Paulo']);
+        $product = Product::factory()->create(['sku' => 'NOITE']);
+
+        // 22h de 10/11 em São Paulo (01h de 11/11 em UTC): para a loja, foi no dia 10.
+        travelTo('2026-11-11 01:00:00');
+        $this->postJson('/api/items', ['product_id' => $product->id])->assertCreated()->assertJsonPath('data.items.0.produced_at', '2026-11-10');
+
+        expect(listMovements('?date_from=2026-11-10&date_to=2026-11-10')->json('data.meta.total'))->toBe(1)
+            ->and(listMovements('?date_from=2026-11-11')->json('data.meta.total'))->toBe(0);
     });
 
     it('requires a session', function () {

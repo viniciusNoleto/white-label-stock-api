@@ -9,10 +9,17 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
- * Pacote de entrega: produtos com quantidade + anotações livres. Cada produto vira linhas
- * (`DeliveryPackageLine`) com os itens reservados para ele (FEFO).
+ * Pacote de entrega: destinatário, produtos com quantidade e anotações livres. Cada produto vira
+ * linhas (`DeliveryPackageLine`) com os itens reservados para ele (FEFO). O autor fica copiado
+ * (`created_by_user_name`) para continuar legível depois que o usuário for excluído.
+ * Entregue = registro da saída: não é editado nem excluído.
+ *
+ * Colunas com cast (o Larastan lê o tipo daqui):
+ * @property DeliveryPackageStatusEnum $status
+ * @property Carbon|null $delivered_at
  */
 class DeliveryPackage extends Model {
 
@@ -22,7 +29,10 @@ class DeliveryPackage extends Model {
 
     protected $fillable = [
         'status',
+        'recipient',
         'notes',
+        'created_by_user_id',
+        'created_by_user_name',
         'delivered_at',
     ];
 
@@ -36,6 +46,9 @@ class DeliveryPackage extends Model {
         ];
     }
 
+    /**
+     * @return HasMany<DeliveryPackageLine, $this>
+     */
     public function lines(): HasMany {
         return $this->hasMany(DeliveryPackageLine::class, 'delivery_package_id', 'id');
     }

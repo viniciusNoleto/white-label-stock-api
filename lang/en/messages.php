@@ -7,12 +7,19 @@ return [
     'not_found' => 'Record not found.',
     'server_error' => 'Unexpected error. Please try again.',
     'invalid_payload' => 'Invalid data.',
+    'too_many_requests' => 'Too many attempts. Wait a moment and try again.',
+    'maintenance' => 'The system is being updated. Try again in a moment.',
+    'concurrency_conflict' => 'Another operation changed this data at the same time. Nothing was saved: try again.',
 
     'auth' => [
         'invalid_credentials' => 'Invalid email or password.',
         'logged_in' => 'Signed in successfully.',
         'logged_out' => 'Signed out.',
         'pending_approval' => 'Your registration is still awaiting an administrator\'s approval.',
+        'password_changed' => 'Password changed. Your other sessions were signed out.',
+        'current_password_invalid' => 'The current password is incorrect.',
+        'password_required_fields' => 'Current and new password are required.',
+        'password_change_error' => 'Error changing the password.',
     ],
 
     'units' => [
@@ -84,6 +91,8 @@ return [
         'invalid_quantity' => 'Invalid quantity.',
         'invalid_date' => 'Invalid date. Use the YYYY-MM-DD format.',
         'invalid_reference' => 'The given product or storage does not exist.',
+        'invalid_storage' => 'Invalid storage.',
+        'invalid_write_off_reason' => 'Invalid write-off reason. Use: expired, damaged, lost or other.',
         'code_taken' => 'An item with this code already exists.',
         'atomic_batch' => 'Atomic items are generated in whole quantities, from 1 to :max at a time.',
         'atomic_integer' => '":name" is counted per unit: use a whole quantity.',
@@ -102,6 +111,7 @@ return [
         'create_error' => 'Error generating items.',
         'update_error' => 'Error updating the item.',
         'delete_error' => 'Error deleting the item.',
+        'quantity_too_large' => 'The quantity would exceed the limit of 99,999,999,999.9999.',
     ],
 
     'stock' => [
@@ -117,6 +127,7 @@ return [
         'invalid_items' => 'Select at least one product, each with a quantity greater than zero.',
         'duplicate_items' => 'Each product can appear only once in the package.',
         'invalid_notes' => 'Notes must be a text of up to 10000 characters.',
+        'invalid_recipient' => 'The recipient must be a text of up to 255 characters.',
         'invalid_reference' => 'Some of the given products do not exist.',
         'insufficient_stock' => 'Not enough free stock of ":name" to package. Required: :required, Available: :available.',
         'invalid_selection_ids' => 'Invalid selected items.',
@@ -126,6 +137,8 @@ return [
         'selection_expired' => 'Item :code is expired and cannot be packaged.',
         'selection_reserved' => 'Item :code is already reserved in another pending package.',
         'already_delivered' => 'This package has already been delivered.',
+        'expired_items' => 'Item :code expired after being reserved and cannot be delivered. Edit the package to swap it.',
+        'delivered_locked' => 'A delivered package is the record of the stock that left and cannot be deleted.',
         'created' => 'Package created successfully.',
         'updated' => 'Package updated successfully.',
         'deleted' => 'Package deleted successfully.',
@@ -160,5 +173,8 @@ return [
         'deleted' => 'User deleted. Their access has been revoked.',
         'fetch_error' => 'Error fetching users.',
         'delete_error' => 'Error deleting user.',
+        'cannot_reset_admin' => 'An administrator\'s password cannot be reset by another administrator.',
+        'password_reset' => 'Password reset. The user\'s sessions were signed out.',
+        'password_reset_error' => 'Error resetting the password.',
     ],
 ];

@@ -1,7 +1,7 @@
 <?php
 
-use App\Models\Inventory\Product;
 use App\Models\Inventory\ItemCategory;
+use App\Models\Inventory\Product;
 
 beforeEach(function () {
     $this->withToken(accessToken());

@@ -22,7 +22,7 @@ final class ListStockQuery {
      * @return LengthAwarePaginator paginador de `['row' => object, 'product' => Product]`
      */
     public function get(ListStockDTO $dto): LengthAwarePaginator {
-        $today = now()->toDateString();
+        $today = business_today();
 
         $groups = $this->base($dto)
             ->where('products.is_atomic', true)
@@ -94,9 +94,9 @@ final class ListStockQuery {
             ->leftJoin('storages', 'storages.id', '=', 'items.storage_id')
             ->leftJoinSub($reserved, 'reserved', 'reserved.item_id', '=', 'items.id')
             ->when($dto->search, fn(Builder $query, string $search) => $query->where(fn(Builder $match) => $match
-                ->whereLike('products.name', '%' . $search . '%')
-                ->orWhereLike('products.sku', '%' . $search . '%')))
+                ->whereLike('products.name', '%' . escape_like($search) . '%')
+                ->orWhereLike('products.sku', '%' . escape_like($search) . '%')))
             ->when($dto->storage_id, fn(Builder $query, int $id) => $query->where('items.storage_id', $id))
-            ->when($dto->expires_at, fn(Builder $query, string $date) => $query->whereDate('items.expires_at', $date));
+            ->when($dto->expires_at, fn(Builder $query, string $date) => $query->where('items.expires_at', $date));
     }
 }

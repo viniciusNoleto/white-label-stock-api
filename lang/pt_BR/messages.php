@@ -7,12 +7,19 @@ return [
     'not_found' => 'Registro não encontrado.',
     'server_error' => 'Erro inesperado. Tente novamente.',
     'invalid_payload' => 'Dados inválidos.',
+    'too_many_requests' => 'Muitas tentativas. Aguarde um pouco e tente de novo.',
+    'maintenance' => 'O sistema está sendo atualizado. Tente de novo em instantes.',
+    'concurrency_conflict' => 'Outra operação alterou estes dados ao mesmo tempo. Nada foi gravado: tente de novo.',
 
     'auth' => [
         'invalid_credentials' => 'E-mail ou senha inválidos.',
         'logged_in' => 'Login realizado com sucesso.',
         'logged_out' => 'Sessão encerrada.',
         'pending_approval' => 'Seu cadastro ainda aguarda a aprovação de um administrador.',
+        'password_changed' => 'Senha alterada. As outras sessões foram encerradas.',
+        'current_password_invalid' => 'A senha atual está incorreta.',
+        'password_required_fields' => 'Senha atual e nova senha são obrigatórias.',
+        'password_change_error' => 'Erro ao alterar a senha.',
     ],
 
     'units' => [
@@ -84,6 +91,8 @@ return [
         'invalid_quantity' => 'Quantidade inválida.',
         'invalid_date' => 'Data inválida. Use o formato AAAA-MM-DD.',
         'invalid_reference' => 'Produto ou armazenamento informado não existe.',
+        'invalid_storage' => 'Armazenamento inválido.',
+        'invalid_write_off_reason' => 'Motivo da baixa inválido. Use: expired, damaged, lost ou other.',
         'code_taken' => 'Já existe um item com este código.',
         'atomic_batch' => 'Itens atômicos são gerados em quantidade inteira, de 1 a :max por vez.',
         'atomic_integer' => '":name" é contado por unidade: use uma quantidade inteira.',
@@ -102,6 +111,7 @@ return [
         'create_error' => 'Erro ao gerar itens.',
         'update_error' => 'Erro ao atualizar o item.',
         'delete_error' => 'Erro ao excluir o item.',
+        'quantity_too_large' => 'A quantidade passaria do limite de 99.999.999.999,9999.',
     ],
 
     'stock' => [
@@ -117,6 +127,7 @@ return [
         'invalid_items' => 'Selecione ao menos um produto, cada um com quantidade maior que zero.',
         'duplicate_items' => 'Cada produto só pode aparecer uma vez no pacote.',
         'invalid_notes' => 'As anotações devem ser um texto de até 10000 caracteres.',
+        'invalid_recipient' => 'O destinatário deve ser um texto de até 255 caracteres.',
         'invalid_reference' => 'Algum produto informado não existe.',
         'insufficient_stock' => 'Estoque livre insuficiente de ":name" para empacotar. Necessário: :required, Disponível: :available.',
         'invalid_selection_ids' => 'Itens escolhidos inválidos.',
@@ -126,6 +137,8 @@ return [
         'selection_expired' => 'O item :code está vencido e não pode ser empacotado.',
         'selection_reserved' => 'O item :code já está reservado em outro pacote pendente.',
         'already_delivered' => 'Este pacote já foi entregue.',
+        'expired_items' => 'O item :code venceu depois de reservado e não pode ser entregue. Edite o pacote para trocar o item.',
+        'delivered_locked' => 'Pacote entregue é o registro da saída do estoque e não pode ser excluído.',
         'created' => 'Pacote criado com sucesso.',
         'updated' => 'Pacote atualizado com sucesso.',
         'deleted' => 'Pacote excluído com sucesso.',
@@ -160,5 +173,8 @@ return [
         'deleted' => 'Usuário excluído. O acesso dele foi encerrado.',
         'fetch_error' => 'Erro ao buscar usuários.',
         'delete_error' => 'Erro ao excluir usuário.',
+        'cannot_reset_admin' => 'A senha de um administrador não pode ser redefinida por outro administrador.',
+        'password_reset' => 'Senha redefinida. As sessões do usuário foram encerradas.',
+        'password_reset_error' => 'Erro ao redefinir a senha.',
     ],
 ];

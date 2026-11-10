@@ -39,6 +39,6 @@ final class ApproveRegistrationRequestAction {
             $request->delete();
 
             return $user->fresh();
-        });
+        }, attempts: config('database.transaction_attempts'));
     }
 }

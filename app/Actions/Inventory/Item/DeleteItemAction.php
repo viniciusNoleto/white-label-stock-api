@@ -4,6 +4,7 @@ namespace App\Actions\Inventory\Item;
 
 use App\Actions\Inventory\StockMovement\RecordStockMovementsAction;
 use App\Enum\Inventory\StockMovementTypeEnum;
+use App\Enum\Inventory\WriteOffReasonEnum;
 use App\Exceptions\ApiException;
 use App\Models\Inventory\Item;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -20,17 +21,19 @@ final class DeleteItemAction {
     }
 
     /**
-     * Baixa manual (perda, vencido, quebrado). Reservado em pacote pendente → 409: tire do pacote antes.
-     * Linhas de pacotes já entregues guardam o código e ficam. Fica registrada como movimentação de baixa.
+     * Baixa manual (vencido, avaria, extravio…). Reservado em pacote pendente → 409: tire do pacote antes.
+     * Linhas de pacotes já entregues guardam o código e ficam. Fica registrada como movimentação de
+     * baixa, com o motivo quando informado.
      *
      * @param mixed $id
+     * @param WriteOffReasonEnum|null $reason
      * @return void
      * @throws Throwable
      */
-    public function handle(mixed $id): void {
+    public function handle(mixed $id, ?WriteOffReasonEnum $reason = null): void {
         $item_id = parse_id($id) ?? throw new ModelNotFoundException(self::NOT_FOUND);
 
-        DB::transaction(function () use ($item_id) {
+        DB::transaction(function () use ($item_id, $reason) {
             $item = Item::query()->with('product')->lockForUpdate()->find($item_id) ?? throw new ModelNotFoundException(self::NOT_FOUND);
 
             if (Item::reservedLinesQuery()->where('delivery_package_has_item.item_id', $item->id)->exists()) {
@@ -41,9 +44,10 @@ final class DeleteItemAction {
                 'item' => $item,
                 'quantity' => bcmul($item->quantity, '-1', 4),
                 'balance' => '0',
+                'reason' => $reason,
             ]]);
 
             $item->delete();
-        });
+        }, attempts: config('database.transaction_attempts'));
     }
 }

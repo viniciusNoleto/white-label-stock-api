@@ -13,10 +13,10 @@ use App\Http\Requests\DeliveryPackage\SaveDeliveryPackageRequest;
 use App\Http\Resources\Delivery\DeliveryPackageResource;
 use App\Models\Delivery\DeliveryPackage;
 use App\Queries\Delivery\ListDeliveryPackagesQuery;
-use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 class DeliveryPackageController extends BaseController {
 
@@ -25,23 +25,15 @@ class DeliveryPackageController extends BaseController {
      * @param ListDeliveryPackagesQuery $query
      * @return JsonResponse|Response
      */
-    public function index(Request $request, ListDeliveryPackagesQuery $query) {
+    public function index(Request $request, ListDeliveryPackagesQuery $query): JsonResponse|Response {
         try {
             $dto = ListDeliveryPackagesDTO::fromRequest($request);
             $paginator = $query->get($dto);
 
             return self::successResponse(
-                data: [
-                    'items' => DeliveryPackageResource::collection($paginator->items()),
-                    'meta' => [
-                        'page' => $dto->page,
-                        'per_page' => $dto->per_page,
-                        'total' => $paginator->total(),
-                        'last_page' => max(1, $paginator->lastPage()),
-                    ],
-                ]
+                data: self::paginated($paginator, DeliveryPackageResource::class)
             );
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             return self::returnError($exception, 'messages.delivery_packages.fetch_error');
         }
     }
@@ -50,7 +42,7 @@ class DeliveryPackageController extends BaseController {
      * @param string $delivery_package_id
      * @return JsonResponse|Response
      */
-    public function show(string $delivery_package_id) {
+    public function show(string $delivery_package_id): JsonResponse|Response {
         try {
             return self::successResponse(
                 data: DeliveryPackageResource::make(DeliveryPackage::findOrFailByKey(
@@ -59,7 +51,7 @@ class DeliveryPackageController extends BaseController {
                     ListDeliveryPackagesQuery::relations()
                 ))
             );
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             return self::returnError($exception, 'messages.delivery_packages.fetch_error');
         }
     }
@@ -69,14 +61,14 @@ class DeliveryPackageController extends BaseController {
      * @param CreateDeliveryPackageAction $action
      * @return JsonResponse|Response
      */
-    public function store(SaveDeliveryPackageRequest $request, CreateDeliveryPackageAction $action) {
+    public function store(SaveDeliveryPackageRequest $request, CreateDeliveryPackageAction $action): JsonResponse|Response {
         try {
             return self::successResponse(
-                data: DeliveryPackageResource::make($action->handle(SaveDeliveryPackageDTO::fromRequest($request))),
+                data: DeliveryPackageResource::make($action->handle(SaveDeliveryPackageDTO::fromRequest($request), $request->user())),
                 message: 'messages.delivery_packages.created',
                 status_code: 201
             );
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             return self::returnError($exception, 'messages.delivery_packages.create_error');
         }
     }
@@ -89,13 +81,13 @@ class DeliveryPackageController extends BaseController {
      * @param string $delivery_package_id
      * @return JsonResponse|Response
      */
-    public function update(SaveDeliveryPackageRequest $request, UpdateDeliveryPackageAction $action, string $delivery_package_id) {
+    public function update(SaveDeliveryPackageRequest $request, UpdateDeliveryPackageAction $action, string $delivery_package_id): JsonResponse|Response {
         try {
             return self::successResponse(
                 data: DeliveryPackageResource::make($action->handle($delivery_package_id, SaveDeliveryPackageDTO::fromRequest($request))),
                 message: 'messages.delivery_packages.updated'
             );
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             return self::returnError($exception, 'messages.delivery_packages.update_error');
         }
     }
@@ -105,12 +97,12 @@ class DeliveryPackageController extends BaseController {
      * @param string $delivery_package_id
      * @return JsonResponse|Response
      */
-    public function destroy(DeleteDeliveryPackageAction $action, string $delivery_package_id) {
+    public function destroy(DeleteDeliveryPackageAction $action, string $delivery_package_id): JsonResponse|Response {
         try {
             $action->handle($delivery_package_id);
 
             return self::successResponse(message: 'messages.delivery_packages.deleted');
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             return self::returnError($exception, 'messages.delivery_packages.delete_error');
         }
     }
@@ -122,13 +114,13 @@ class DeliveryPackageController extends BaseController {
      * @param string $delivery_package_id
      * @return JsonResponse|Response
      */
-    public function deliver(DeliverDeliveryPackageAction $action, string $delivery_package_id) {
+    public function deliver(DeliverDeliveryPackageAction $action, string $delivery_package_id): JsonResponse|Response {
         try {
             return self::successResponse(
                 data: DeliveryPackageResource::make($action->handle($delivery_package_id)),
                 message: 'messages.delivery_packages.delivered'
             );
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
             return self::returnError($exception, 'messages.delivery_packages.deliver_error');
         }
     }

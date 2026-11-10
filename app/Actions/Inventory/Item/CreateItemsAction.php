@@ -44,8 +44,8 @@ final class CreateItemsAction {
     public function handle(CreateItemsDTO $dto): Collection {
         try {
             return DB::transaction(function () use ($dto) {
-                // A linha do produto travada serializa a sequência dos códigos.
-                $product = Product::query()->lockForUpdate()->find($dto->product_id)
+                // A linha do produto travada serializa a sequência dos códigos (sem bloquear as FKs: `lockedForWrite`).
+                $product = Product::query()->lockedForWrite()->find($dto->product_id)
                     ?? throw new ApiException('messages.items.invalid_reference');
 
                 $count = $this->itemsCount($product, $dto);
@@ -84,7 +84,7 @@ final class CreateItemsAction {
                 );
 
                 return $items;
-            });
+            }, attempts: config('database.transaction_attempts'));
         } catch (QueryException $exception) {
             if (is_foreign_key_violation($exception)) {
                 throw new ApiException('messages.items.invalid_reference');
@@ -119,7 +119,8 @@ final class CreateItemsAction {
     }
 
     /**
-     * Consome `quantity_required × quantity` de cada componente, sempre na ordem do id (evita deadlock).
+     * Consome `quantity_required × quantity` de cada componente, percorrendo os componentes em ordem de
+     * id: junto com `Item::lockedInStockOrder`, os locks seguem a mesma ordem global da reserva e da entrega.
      *
      * @param Product $product
      * @param string $quantity
@@ -152,7 +153,9 @@ final class CreateItemsAction {
     }
 
     /**
-     * Próximos códigos da sequência do produto, pulando os já usados (ex.: códigos antigos digitados à mão).
+     * Próximos códigos da sequência do produto, pulando os já usados: o prefixo vem do SKU, que pode ser
+     * editado (ex.: o SKU de um produto passa a ser o prefixo que outro já usou), então a sequência sozinha
+     * não garante que o código esteja livre.
      *
      * @param Product $product
      * @param int $count

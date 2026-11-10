@@ -23,7 +23,7 @@ class SaveProductRequest extends BaseRequest {
             'category_ids' => 'nullable|array',
             'components' => 'nullable|array',
             'components.*.id' => 'required|integer|min:1|distinct',
-            'components.*.quantity_required' => 'required|numeric|gt:0',
+            'components.*.quantity_required' => 'required|' . decimal_rule() . '|gt:0',
         ];
     }
 

@@ -1,0 +1,17 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 5
+    paths:
+        - app
+        - config
+        - database
+        - routes
+    tmpDir: storage/framework/cache/phpstan
+    ignoreErrors:
+        # `delete()`/`save()` não declaram `@throws QueryException`, mas lançam (FK 23503, unique 23505):
+        # os `catch` das Actions que traduzem esses erros em 409/422 são de propósito.
+        -
+            identifier: catch.neverThrown
+            path: app/Actions/*
