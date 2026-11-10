@@ -13,7 +13,7 @@ class SaveProductDTO extends Data {
      * @param int $unit_id
      * @param bool $is_atomic padrão `true` (um item por unidade)
      * @param int|null $shelf_life_days dias de validade após a produção; `null` = não vence
-     * @param int[] $category_ids sem repetição
+     * @param int[] $category_ids sem repetição (cada id já validado no FormRequest: nada é descartado aqui)
      * @param array<int, array{id: int, quantity_required: string}> $components quantidade com 4 casas (escala da coluna)
      */
     public function __construct(
@@ -41,8 +41,7 @@ class SaveProductDTO extends Data {
             is_atomic: (bool)($request->validated('is_atomic') ?? true),
             shelf_life_days: $request->validated('shelf_life_days') === null ? null : (int)$request->validated('shelf_life_days'),
             category_ids: collect($request->validated('category_ids') ?? [])
-                ->map(fn($id) => parse_id($id))
-                ->filter()
+                ->map(fn($id) => (int)$id)
                 ->unique()
                 ->values()
                 ->all(),

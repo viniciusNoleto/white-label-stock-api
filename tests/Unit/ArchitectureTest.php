@@ -87,3 +87,32 @@ it('retries every action transaction on deadlock (attempts from config)', functi
 
     expect($offenders)->toBe([]);
 });
+
+it('does every bcmath operation at the column scale (DECIMAL_SCALE), never a hardcoded one', function () {
+    // `bcadd($a, $b, 4)` espalhado é como o `SCALE = 4` repetido em seis classes: trocar a escala da
+    // coluna exigiria caçar cada um. A escala vem de um lugar só (`app/Base/Helpers/numbers.php`).
+    // Escala `0` é permitida: é truncar para inteiro de propósito (`is_whole_number`), não a escala da coluna.
+    $offenders = [];
+
+    foreach (Finder::create()->files()->in(app_path())->name('*.php') as $file) {
+        if (preg_match('/\bbc(add|sub|mul|div|comp|mod)\([^;]*,\s*[1-9]\d*\s*\)/', $file->getContents())) {
+            $offenders[] = $file->getRelativePathname();
+        }
+    }
+
+    expect($offenders)->toBe([]);
+});
+
+it('never locks a product row with FOR UPDATE (deadlock with the FOR KEY SHARE of every foreign key)', function () {
+    // `Product::lockedForWrite()` (FOR NO KEY UPDATE) é o único lock de escrita na linha do produto
+    // (AGENTS.md › Locks). Heurística: `Product::query()…->lockForUpdate()` na mesma instrução.
+    $offenders = [];
+
+    foreach (Finder::create()->files()->in(app_path())->name('*.php') as $file) {
+        if (preg_match('/Product::query\(\)[^;]*->lockForUpdate\(\)/s', $file->getContents())) {
+            $offenders[] = $file->getRelativePathname();
+        }
+    }
+
+    expect($offenders)->toBe([]);
+});

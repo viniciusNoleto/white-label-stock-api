@@ -55,9 +55,15 @@ return [
 
     'channels' => [
 
+        // Com `LOG_SLACK_WEBHOOK_URL` preenchido, o canal `slack` entra sozinho na pilha: todo log a partir
+        // de `LOG_SLACK_LEVEL` (padrão `error`: os 500) vira um alerta com `request_id` e `user_id`.
+        // Sem a URL, nada muda (o canal não é criado sem destino).
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', (string)env('LOG_STACK', 'single')),
+            'channels' => array_values(array_unique(array_filter([
+                ...explode(',', (string)env('LOG_STACK', 'single')),
+                env('LOG_SLACK_WEBHOOK_URL') ? 'slack' : null,
+            ]))),
             'ignore_exceptions' => false,
         ],
 
@@ -89,7 +95,9 @@ return [
             'url' => env('LOG_SLACK_WEBHOOK_URL'),
             'username' => env('LOG_SLACK_USERNAME', env('APP_NAME', 'Laravel')),
             'emoji' => env('LOG_SLACK_EMOJI', ':boom:'),
-            'level' => env('LOG_LEVEL', 'critical'),
+            // Nível próprio: `LOG_LEVEL=info` no arquivo/stderr não pode virar um alerta por requisição.
+            'level' => env('LOG_SLACK_LEVEL', 'error'),
+            'context' => true,
             'replace_placeholders' => true,
         ],
 

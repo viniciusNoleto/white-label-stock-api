@@ -12,7 +12,8 @@ class SaveDeliveryPackageRequest extends BaseRequest {
 
     /**
      * A ordem das regras define qual mensagem aparece primeiro. `item_ids` (opcional, só atômicos):
-     * os itens escolhidos um a um no lugar do FEFO; a quantidade precisa bater com eles.
+     * os itens escolhidos um a um no lugar do FEFO. Com eles, `quantity` é opcional (vale a contagem);
+     * se vier, precisa bater com ela (compatível com o web, que manda as duas).
      *
      * @return array<string, mixed>
      */
@@ -20,7 +21,7 @@ class SaveDeliveryPackageRequest extends BaseRequest {
         return [
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|integer|min:1|distinct',
-            'items.*.quantity' => 'required|' . decimal_rule() . '|gt:0',
+            'items.*.quantity' => 'required_without:items.*.item_ids|nullable|' . decimal_rule() . '|gt:0',
             'items.*.item_ids' => 'nullable|array|min:1',
             'items.*.item_ids.*' => 'required|integer|min:1|distinct',
             'recipient' => 'nullable|string|max:' . self::RECIPIENT_MAX_LENGTH,

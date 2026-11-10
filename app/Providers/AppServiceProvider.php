@@ -2,7 +2,10 @@
 
 namespace App\Providers;
 
+use App\Base\Database\ConcurrencyErrorDetector;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Contracts\Database\ConcurrencyErrorDetector as ConcurrencyErrorDetectorContract;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Events\DiagnosingHealth;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,7 +19,8 @@ class AppServiceProvider extends ServiceProvider {
      * Register any application services.
      */
     public function register(): void {
-        //
+        // Retry de transação por SQLSTATE (deadlock/serialização), não pelo texto da mensagem.
+        $this->app->singleton(ConcurrencyErrorDetectorContract::class, ConcurrencyErrorDetector::class);
     }
 
     /**
@@ -24,6 +28,10 @@ class AppServiceProvider extends ServiceProvider {
      */
     public function boot(): void {
         $this->configureRateLimiting();
+
+        // N+1 vira exceção fora de produção: relação usada sem `with()`/`load()` quebra o teste que passa
+        // por ela. Em produção só seria uma consulta a mais, então não derruba a requisição.
+        Model::preventLazyLoading(!$this->app->isProduction());
 
         // `/up` só responde 200 se o banco responder: o healthcheck do container e o monitoramento
         // passam a enxergar "php no ar, Postgres fora" (antes o `/up` não tocava o banco).

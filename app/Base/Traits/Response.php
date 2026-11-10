@@ -3,6 +3,7 @@
 namespace App\Base\Traits;
 
 use App\Exceptions\ApiException;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -82,7 +83,8 @@ trait Response {
             return self::httpExceptionResponse($exception);
         }
 
-        if (is_concurrency_failure($exception)) {
+        // Lock de cache que não saiu a tempo (ex.: dedupe do refresh) é contenção, como o 55P03 do banco.
+        if (is_concurrency_failure($exception) || $exception instanceof LockTimeoutException) {
             return self::concurrencyFailureResponse($exception);
         }
 
@@ -110,14 +112,18 @@ trait Response {
     }
 
     /**
-     * Deadlock/serialização que sobrou depois das tentativas da transação: é uma corrida, não um bug
-     * (o dado não foi alterado). 409 pede para o cliente tentar de novo; o log registra para medir a frequência.
+     * Deadlock/serialização que sobrou depois das tentativas da transação, lock do banco que não saiu
+     * em `lock_timeout` (55P03) ou lock de cache que estourou a espera: é uma corrida, não um bug (o dado
+     * não foi alterado). 409 pede para o cliente tentar de novo; o log registra para medir a frequência.
      *
      * @param Throwable $exception
      * @return JsonResponse
      */
     public static function concurrencyFailureResponse(Throwable $exception): JsonResponse {
-        Log::warning('database.concurrency_failure', ['sqlstate' => (string)$exception->getCode()]);
+        Log::warning('database.concurrency_failure', [
+            'exception' => $exception::class,
+            'sqlstate' => (string)$exception->getCode(),
+        ]);
 
         return self::errorResponse('messages.concurrency_conflict', 409);
     }

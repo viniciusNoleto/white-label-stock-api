@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 
 final class RefreshSessionAction {
 
@@ -23,7 +24,8 @@ final class RefreshSessionAction {
      * na detecção de reuso e revogaria a família inteira (logout forçado).
      *
      * O lock e o resultado ficam no cache (compartilhado entre os workers do php-fpm); o par
-     * novo é guardado criptografado, só pela janela de reuso.
+     * novo é guardado criptografado, só pela janela de reuso. Esperar o lock por mais que a janela
+     * lança `LockTimeoutException`, que o `Response` responde como 409 "tente de novo" (não 500).
      *
      * @param string $refresh_token
      * @return SessionDTO|null
@@ -50,29 +52,38 @@ final class RefreshSessionAction {
     }
 
     /**
+     * Rotação e access token novo numa transação só. Antes, a rotação fazia commit sozinha e o access
+     * token era criado depois: se essa segunda escrita falhasse, o refresh antigo já estava revogado, a
+     * nova tentativa do cliente (fora da janela de dedupe) caía na detecção de reuso e a família inteira
+     * era derrubada — logout forçado por um erro de infraestrutura. Agora a falha desfaz a rotação e o
+     * mesmo refresh token continua valendo. O caminho de reuso (retorna `null` sem exceção) faz commit
+     * normalmente: a revogação da família não é desfeita.
+     *
      * @param string $refresh_token
      * @return SessionDTO|null
      */
     private function rotate(string $refresh_token): ?SessionDTO {
-        $rotated = $this->rotateRefreshToken->handle($refresh_token);
+        return DB::transaction(function () use ($refresh_token) {
+            $rotated = $this->rotateRefreshToken->handle($refresh_token);
 
-        if (!$rotated) {
-            return null;
-        }
+            if (!$rotated) {
+                return null;
+            }
 
-        [$user_id, $new_refresh_token] = $rotated;
+            [$user_id, $new_refresh_token] = $rotated;
 
-        $user = User::find($user_id);
+            $user = User::find($user_id);
 
-        if (!$user) {
-            return null;
-        }
+            if (!$user) {
+                return null;
+            }
 
-        return new SessionDTO(
-            user: $user,
-            access_token: $this->createAccessToken->handle($user->id, $new_refresh_token->family_id),
-            refresh_token: $new_refresh_token
-        );
+            return new SessionDTO(
+                user: $user,
+                access_token: $this->createAccessToken->handle($user->id, $new_refresh_token->family_id),
+                refresh_token: $new_refresh_token
+            );
+        }, attempts: config('database.transaction_attempts'));
     }
 
     /**

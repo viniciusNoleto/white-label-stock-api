@@ -90,6 +90,8 @@ return [
         'product_required' => 'Selecciona el producto.',
         'invalid_quantity' => 'Cantidad inválida.',
         'invalid_date' => 'Fecha inválida. Usa el formato AAAA-MM-DD.',
+        'produced_in_future' => 'La fecha de producción no puede estar en el futuro.',
+        'expires_before_produced' => 'El vencimiento no puede ser anterior a la fecha de producción.',
         'invalid_reference' => 'El producto o almacenamiento indicado no existe.',
         'invalid_storage' => 'Almacenamiento inválido.',
         'invalid_write_off_reason' => 'Motivo de baja inválido. Usa: expired, damaged, lost u other.',
@@ -120,6 +122,7 @@ return [
 
     'stock_movements' => [
         'fetch_error' => 'Error al obtener los movimientos.',
+        'summary_error' => 'Error al resumir los movimientos.',
     ],
 
     'delivery_packages' => [

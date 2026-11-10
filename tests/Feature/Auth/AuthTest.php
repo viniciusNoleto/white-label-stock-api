@@ -8,11 +8,15 @@ use App\Models\Auth\RefreshToken;
 use App\Models\Auth\RegistrationRequest;
 use App\Models\User;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
+use Monolog\Handler\TestHandler;
+use Monolog\Level;
+use Monolog\LogRecord;
 
 function login(string $email = 'ana@example.com', string $password = 'secret123'): TestResponse {
     return test()->postJson('/api/auth/login', ['email' => $email, 'password' => $password]);
@@ -274,6 +278,37 @@ describe('POST /api/auth/token/refresh', function () {
         $this->withToken($other_device['access_token'])->getJson('/api/auth/me')->assertOk();
     });
 
+    it('keeps the refresh token valid when issuing the new access token fails', function () {
+        $user = User::factory()->create();
+        $token = app(CreateRefreshTokenAction::class)->handle($user->id)->token;
+
+        // A rotação acontece, mas a criação do access token falha: tudo precisa voltar atrás.
+        failTable('access_tokens');
+        $this->postJson('/api/auth/token/refresh', ['refresh_token' => $token])->assertServerError();
+        DB::statement('ALTER TABLE access_tokens_unavailable RENAME TO access_tokens');
+
+        expect(RefreshToken::byToken($token)->first()->revoked)->toBeFalse();
+
+        // A nova tentativa do cliente (mesmo depois da janela de dedupe) não é tratada como reuso.
+        $this->travel(11)->seconds();
+        $this->postJson('/api/auth/token/refresh', ['refresh_token' => $token])->assertOk();
+    });
+
+    it('answers 409, not 500, when another refresh with the same token holds the lock for too long', function () {
+        config(['auth_tokens.refresh_reuse_window_seconds' => 1]);
+        $user = User::factory()->create();
+        $token = app(CreateRefreshTokenAction::class)->handle($user->id)->token;
+        $lock = Cache::lock('auth:refresh:' . hash_token($token) . ':lock', 10);
+        $lock->get();
+
+        $this->postJson('/api/auth/token/refresh', ['refresh_token' => $token])
+            ->assertConflict()
+            ->assertJsonPath('message.en-us', 'Another operation changed this data at the same time. Nothing was saved: try again.');
+
+        $lock->release();
+        expect(RefreshToken::byToken($token)->first()->revoked)->toBeFalse();
+    });
+
     it('rejects expired refresh tokens', function () {
         $user = User::factory()->create();
         $token = app(CreateRefreshTokenAction::class)->handle($user->id)->token;
@@ -339,6 +374,23 @@ describe('operations', function () {
 
         $generated = $this->withHeader('X-Request-Id', 'bad id with spaces')->getJson('/api/units')->headers->get('X-Request-Id');
         expect($generated)->not->toBe('bad id with spaces')->toMatch('/^[0-9a-f-]{36}$/');
+    });
+
+    it('logs an unexpected error with the request id and the user, so an alert leads to the request', function () {
+        $user = User::factory()->create();
+        $handler = new TestHandler;
+        Log::getLogger()->pushHandler($handler);
+        failTable('units');
+
+        $this->withToken(accessToken($user))
+            ->withHeader('X-Request-Id', 'web-1234-abcd')
+            ->getJson('/api/units')
+            ->assertServerError();
+
+        $error = collect($handler->getRecords())->first(fn(LogRecord $record) => $record->level === Level::Error);
+
+        expect($error)->not->toBeNull()
+            ->and($error->extra)->toMatchArray(['request_id' => 'web-1234-abcd', 'user_id' => $user->id]);
     });
 
     it('checks the database in the health endpoint', function () {

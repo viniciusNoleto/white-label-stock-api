@@ -29,8 +29,10 @@ if (!function_exists('is_unique_violation')) {
 if (!function_exists('is_concurrency_failure')) {
     /**
      * Conflito entre transações simultâneas: 40P01 (deadlock), 40001 (serialização) ou 55P03 (lock
-     * não disponível). As Actions de estoque já repetem a transação (`DB::transaction(…, attempts)`);
-     * se mesmo assim falhar, a resposta é 409 "tente de novo", não 500.
+     * não obtido em `lock_timeout`). Deadlock e serialização já foram repetidos pela transação
+     * (`DB::transaction(…, attempts)`, decisão em `App\Base\Database\ConcurrencyErrorDetector`); o
+     * 55P03 **não** é repetido, porque já esperou o `lock_timeout` inteiro. O que chegar aqui vira
+     * 409 "tente de novo", não 500.
      *
      * @param Throwable $exception
      * @return bool

@@ -7,6 +7,7 @@ use App\Queries\Auth\FindUserByAccessTokenQuery;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Context;
 use Throwable;
 
 /**
@@ -31,6 +32,8 @@ class AuthenticateMiddleware {
             }
 
             Auth::setUser($user);
+            // Junto com o `request_id`, todo log (e alerta) da requisição diz de quem ela veio.
+            Context::add('user_id', $user->id);
 
             return $next($request);
         } catch (Throwable $exception) {

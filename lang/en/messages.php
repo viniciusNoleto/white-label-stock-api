@@ -90,6 +90,8 @@ return [
         'product_required' => 'Select the product.',
         'invalid_quantity' => 'Invalid quantity.',
         'invalid_date' => 'Invalid date. Use the YYYY-MM-DD format.',
+        'produced_in_future' => 'The production date cannot be in the future.',
+        'expires_before_produced' => 'The expiration date cannot be before the production date.',
         'invalid_reference' => 'The given product or storage does not exist.',
         'invalid_storage' => 'Invalid storage.',
         'invalid_write_off_reason' => 'Invalid write-off reason. Use: expired, damaged, lost or other.',
@@ -120,6 +122,7 @@ return [
 
     'stock_movements' => [
         'fetch_error' => 'Error fetching stock movements.',
+        'summary_error' => 'Error summarizing the stock movements.',
     ],
 
     'delivery_packages' => [

@@ -8,8 +8,6 @@ use App\Models\Inventory\Product;
 
 final class AllocateProductStockAction {
 
-    private const SCALE = 4;
-
     /**
      * Escolhe de quais itens do produto sai `$quantity`, só no que está livre
      * (`quantidade − reservado em pacotes pendentes`) e dentro da validade (vencido não vai para
@@ -25,7 +23,7 @@ final class AllocateProductStockAction {
      * @throws ApiException
      */
     public function handle(Product $product, string $quantity, string $insufficient_key = 'messages.items.insufficient_stock'): array {
-        if ($product->is_atomic && !is_whole_number($quantity, self::SCALE)) {
+        if ($product->is_atomic && !is_whole_number($quantity, DECIMAL_SCALE)) {
             throw new ApiException('messages.items.atomic_integer', 422, ['name' => $product->name]);
         }
 
@@ -55,22 +53,22 @@ final class AllocateProductStockAction {
         $allocations = [];
 
         foreach ($ordered as $item) {
-            $free = bcsub($item->quantity, (string)($reserved->get($item->id) ?? '0'), self::SCALE);
+            $free = bcsub($item->quantity, (string)($reserved->get($item->id) ?? '0'), DECIMAL_SCALE);
 
-            if (bccomp($free, '0', self::SCALE) <= 0) {
+            if (bccomp($free, '0', DECIMAL_SCALE) <= 0) {
                 continue;
             }
 
-            $available = bcadd($available, $free, self::SCALE);
+            $available = bcadd($available, $free, DECIMAL_SCALE);
 
-            if (bccomp($remaining, '0', self::SCALE) > 0) {
-                $take = bccomp($free, $remaining, self::SCALE) < 0 ? $free : $remaining;
+            if (bccomp($remaining, '0', DECIMAL_SCALE) > 0) {
+                $take = bccomp($free, $remaining, DECIMAL_SCALE) < 0 ? $free : $remaining;
                 $allocations[] = ['item' => $item, 'quantity' => $take];
-                $remaining = bcsub($remaining, $take, self::SCALE);
+                $remaining = bcsub($remaining, $take, DECIMAL_SCALE);
             }
         }
 
-        if (bccomp($remaining, '0', self::SCALE) > 0) {
+        if (bccomp($remaining, '0', DECIMAL_SCALE) > 0) {
             throw new ApiException($insufficient_key, 422, [
                 'name' => $product->name,
                 'required' => format_decimal($quantity),

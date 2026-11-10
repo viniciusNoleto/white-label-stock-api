@@ -120,6 +120,7 @@ describe('POST /api/items', function () {
         'no product' => [[], 'Select the product.'],
         'zero quantity' => [['product_id' => 1, 'quantity' => 0], 'Invalid quantity.'],
         'bad date' => [['product_id' => 1, 'produced_at' => '09/11/2026'], 'Invalid date. Use the YYYY-MM-DD format.'],
+        'produced tomorrow' => [['product_id' => 1, 'produced_at' => '2026-11-10'], 'The production date cannot be in the future.'],
         // Mais casas que a coluna: antes virava 0.0000 em silêncio.
         'five decimal places' => [['product_id' => 1, 'quantity' => '0.00001'], 'Invalid quantity.'],
         'five decimal places (number)' => [['product_id' => 1, 'quantity' => 0.00001], 'Invalid quantity.'],
@@ -149,6 +150,19 @@ describe('POST /api/items', function () {
             ->assertCreated()
             ->assertJsonPath('data.items.0.produced_at', '2026-11-08')
             ->assertJsonPath('data.items.0.expires_at', '2026-11-09');
+    });
+
+    it('takes "the future" from the business day, not from UTC', function () {
+        config(['app.business_timezone' => 'America/Sao_Paulo']);
+        // 23h30 de 08/11 em São Paulo; em UTC já é 09/11, mas na loja 09/11 ainda é amanhã.
+        Carbon::setTestNow('2026-11-09 02:30:00');
+        $product = Product::factory()->create();
+
+        generateItems(['product_id' => $product->id, 'produced_at' => '2026-11-09'])
+            ->assertUnprocessable()
+            ->assertJsonPath('message.en-us', 'The production date cannot be in the future.');
+
+        generateItems(['product_id' => $product->id, 'produced_at' => '2026-11-08'])->assertCreated();
     });
 
     it('returns 422 for references that do not exist', function (bool $unknownProduct) {
@@ -403,9 +417,38 @@ describe('PATCH /api/items/{item_id}', function () {
         'negative' => [['quantity' => -1], 'Invalid quantity.'],
         'only the code' => [['code' => 'NEW'], 'No fields to update were provided.'],
         'bad date' => [['expires_at' => '2026-13-01'], 'Invalid date. Use the YYYY-MM-DD format.'],
+        'produced tomorrow' => [['produced_at' => '2026-11-10'], 'The production date cannot be in the future.'],
         'five decimal places' => [['quantity_add' => '0.00001'], 'Invalid quantity.'],
         'too large' => [['quantity' => '100000000000'], 'Invalid quantity.'],
     ]);
+
+    it('never lets an item expire before it was produced', function (array $payload) {
+        // Sem validade no produto: mudar só a produção não recalcula o vencimento.
+        $item = Item::factory()->create([
+            'product_id' => Product::factory()->create(['shelf_life_days' => null])->id,
+            'produced_at' => '2026-11-01',
+            'expires_at' => '2026-11-05',
+        ]);
+
+        $this->patchJson("/api/items/{$item->id}", $payload)
+            ->assertUnprocessable()
+            ->assertJsonPath('message.en-us', 'The expiration date cannot be before the production date.');
+
+        expect($item->fresh()->produced_at->toDateString())->toBe('2026-11-01')
+            ->and($item->fresh()->expires_at->toDateString())->toBe('2026-11-05');
+    })->with([
+        'only the expiration, before the stored production' => [['expires_at' => '2026-10-31']],
+        'only the production, after the stored expiration' => [['produced_at' => '2026-11-06']],
+        'both, inverted' => [['produced_at' => '2026-11-08', 'expires_at' => '2026-11-07']],
+    ]);
+
+    it('accepts an expiration on the production day', function () {
+        $item = Item::factory()->create(['produced_at' => '2026-11-01', 'expires_at' => '2026-11-05']);
+
+        $this->patchJson("/api/items/{$item->id}", ['expires_at' => '2026-11-01'])
+            ->assertOk()
+            ->assertJsonPath('data.expires_at', '2026-11-01');
+    });
 
     it('rejects a storage that is not an id instead of silently unlinking it', function (mixed $storage_id) {
         $storage = Storage::factory()->create();

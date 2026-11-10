@@ -1,5 +1,13 @@
 <?php
 
+if (!defined('DECIMAL_SCALE')) {
+    /**
+     * Casas decimais das quantidades (`decimal(15, 4)`): a escala de **toda** conta com bcmath. Uma
+     * constante só, em vez de `SCALE = 4` repetido em cada classe que faz conta.
+     */
+    define('DECIMAL_SCALE', 4);
+}
+
 if (!defined('DECIMAL_MAX')) {
     /** Maior valor que cabe numa coluna `decimal(15, 4)`: 11 dígitos inteiros e 4 casas. */
     define('DECIMAL_MAX', '99999999999.9999');
@@ -36,7 +44,7 @@ if (!function_exists('to_decimal')) {
      * @param int $scale
      * @return string
      */
-    function to_decimal(int|float|string $value, int $scale = 4): string {
+    function to_decimal(int|float|string $value, int $scale = DECIMAL_SCALE): string {
         if (is_float($value)) {
             return sprintf('%.' . $scale . 'F', $value);
         }
@@ -67,7 +75,7 @@ if (!function_exists('format_decimal')) {
      * @return string
      */
     function format_decimal(string|int $value): string {
-        $formatted = bcadd(trim((string)$value), '0', 4);
+        $formatted = bcadd(trim((string)$value), '0', DECIMAL_SCALE);
 
         return str_contains($formatted, '.') ? rtrim(rtrim($formatted, '0'), '.') : $formatted;
     }
@@ -81,7 +89,7 @@ if (!function_exists('is_whole_number')) {
      * @param int $scale
      * @return bool
      */
-    function is_whole_number(string $value, int $scale = 4): bool {
+    function is_whole_number(string $value, int $scale = DECIMAL_SCALE): bool {
         return bccomp($value, bcadd($value, '0', 0), $scale) === 0;
     }
 }

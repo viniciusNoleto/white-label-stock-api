@@ -9,8 +9,6 @@ use Illuminate\Support\Facades\DB;
 
 final class SyncProductRelationsAction {
 
-    private const SCALE = 4;
-
     /** Chave do `pg_advisory_xact_lock` que serializa as edições de receita. */
     private const RECIPE_LOCK_KEY = 7_301_001;
 
@@ -65,7 +63,7 @@ final class SyncProductRelationsAction {
         foreach ($components as $component) {
             $component_product = $found->get($component['id']);
 
-            if ($component_product->is_atomic && !is_whole_number($component['quantity_required'], self::SCALE)) {
+            if ($component_product->is_atomic && !is_whole_number($component['quantity_required'], DECIMAL_SCALE)) {
                 throw new ApiException('messages.products.atomic_component_integer', 422, ['name' => $component_product->name]);
             }
         }

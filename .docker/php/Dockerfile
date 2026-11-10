@@ -20,6 +20,12 @@ RUN apt-get update && apt-get install -y \
 # Extensões do PHP (opcache já vem embutido no PHP 8.5)
 RUN docker-php-ext-install pdo pdo_pgsql pgsql zip mbstring bcmath intl pcntl
 
+# Cobertura de testes, só quando pedida (`--build-arg INSTALL_PCOV=1`, usado pelo CI): a imagem de
+# produção continua sem o pcov. Versão fixa, como o resto.
+ARG INSTALL_PCOV=0
+ARG PCOV_VERSION=1.0.12
+RUN if [ "$INSTALL_PCOV" = "1" ]; then pecl install pcov-${PCOV_VERSION} && docker-php-ext-enable pcov; fi
+
 # Composer
 COPY --from=composer:2.10.3 /usr/bin/composer /usr/local/bin/composer
 

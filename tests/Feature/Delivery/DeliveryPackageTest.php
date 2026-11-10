@@ -207,6 +207,17 @@ describe('POST /api/delivery-packages', function () {
             ]);
     });
 
+    it('takes the quantity from the chosen items when it is not sent', function () {
+        [, $cake] = seedPackageStock();
+        $b1 = Item::where('code', 'BOLO-0001')->value('id');
+        $b3 = Item::where('code', 'BOLO-0003')->value('id');
+
+        postPackage([['product_id' => $cake->id, 'item_ids' => [$b3, $b1]]])
+            ->assertCreated()
+            ->assertJsonPath('data.items.0.quantity', '2.0000')
+            ->assertJsonCount(2, 'data.items.0.allocations');
+    });
+
     it('rejects a chosen item that is not available and creates nothing', function (string $case, string $message) {
         [$coco, $cake] = seedPackageStock();
         $b2 = Item::where('code', 'BOLO-0002')->value('id');

@@ -19,7 +19,11 @@ final class CreateItemsAction {
     /** Limite de itens atômicos gerados numa única produção. */
     public const MAX_BATCH = 500;
 
-    private const SCALE = 4;
+    /**
+     * Espaço do `pg_advisory_xact_lock(int, int)` dos prefixos de código. A forma de duas chaves não
+     * se mistura com a de uma chave (a da receita, em `SyncProductRelationsAction`).
+     */
+    private const CODE_PREFIX_LOCK_SPACE = 1;
 
     public function __construct(
         private readonly AllocateProductStockAction $allocate,
@@ -111,7 +115,7 @@ final class CreateItemsAction {
             return 1;
         }
 
-        if (!is_whole_number($dto->quantity, self::SCALE) || bccomp($dto->quantity, (string)self::MAX_BATCH, self::SCALE) > 0) {
+        if (!is_whole_number($dto->quantity, DECIMAL_SCALE) || bccomp($dto->quantity, (string)self::MAX_BATCH, DECIMAL_SCALE) > 0) {
             throw new ApiException('messages.items.atomic_batch', 422, ['max' => self::MAX_BATCH]);
         }
 
@@ -135,15 +139,15 @@ final class CreateItemsAction {
         }
 
         foreach ($components as $component) {
-            $required = bcmul($component->pivot->quantity_required, $quantity, self::SCALE);
+            $required = bcmul($component->pivot->quantity_required, $quantity, DECIMAL_SCALE);
 
             $allocations = $this->allocate->handle($component, $required);
 
             // Registra antes de consumir: o atômico é excluído no consumo.
             $this->recordMovements->handle(StockMovementTypeEnum::CONSUMPTION, $component, array_map(fn(array $allocation) => [
                 'item' => $allocation['item'],
-                'quantity' => bcmul($allocation['quantity'], '-1', self::SCALE),
-                'balance' => bcsub($allocation['item']->quantity, $allocation['quantity'], self::SCALE),
+                'quantity' => bcmul($allocation['quantity'], '-1', DECIMAL_SCALE),
+                'balance' => bcsub($allocation['item']->quantity, $allocation['quantity'], DECIMAL_SCALE),
             ], $allocations));
 
             foreach ($allocations as $allocation) {
@@ -157,12 +161,20 @@ final class CreateItemsAction {
      * editado (ex.: o SKU de um produto passa a ser o prefixo que outro já usou), então a sequência sozinha
      * não garante que o código esteja livre.
      *
+     * O lock da linha do produto só serializa o **mesmo** produto. Dois produtos podem ter o mesmo prefixo
+     * (um sem SKU usa `P{id}`, e outro pode ter exatamente esse SKU): sem mais nada, os dois liam os
+     * mesmos códigos livres ao mesmo tempo e um levava 422 `code_taken`. O advisory lock por prefixo
+     * serializa quem disputa o prefixo até o commit. Ele é o **último** lock da transação (a linha do
+     * produto e os itens da receita já foram travados antes), então não entra em ciclo com nenhum outro.
+     *
      * @param Product $product
      * @param int $count
      * @return string[]
      */
     private function nextCodes(Product $product, int $count): array {
         $prefix = $product->codePrefix();
+        DB::statement('SELECT pg_advisory_xact_lock(?, hashtext(?))', [self::CODE_PREFIX_LOCK_SPACE, $prefix]);
+
         $number = $product->next_item_number;
         $codes = [];
 

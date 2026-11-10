@@ -63,7 +63,10 @@ Route::middleware('auth')->group(function () {
     });
 
     Route::get('stock', [StockController::class, 'index'])->name('stock.index');
-    Route::get('stock-movements', [StockMovementController::class, 'index'])->name('stock-movements.index');
+    Route::prefix('stock-movements')->group(function () {
+        Route::get('', [StockMovementController::class, 'index'])->name('stock-movements.index');
+        Route::get('summary', [StockMovementController::class, 'summary'])->name('stock-movements.summary');
+    });
 
     Route::prefix('delivery-packages')->group(function () {
         Route::get('', [DeliveryPackageController::class, 'index'])->name('delivery-packages.index');

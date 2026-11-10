@@ -112,3 +112,26 @@ it('does not deadlock when production with a recipe races deliveries of the comp
         ->and(Item::where('product_id', $component->id)->count())->toBe(20)
         ->and(Item::where('product_id', $product->id)->count())->toBe(10);
 });
+
+it('never collides item codes between products that share a code prefix', function () {
+    // O lock da linha do produto serializa a sequência de **um** produto. Um produto sem SKU usa o
+    // prefixo `P{id}`, e outro pode ter exatamente esse SKU: os dois geram `P{id}-0001`… ao mesmo tempo.
+    // O índice único protegia o dado, mas um dos usuários levava 422 `code_taken` sem culpa. O advisory
+    // lock por prefixo (último lock da transação) serializa quem disputa o mesmo prefixo.
+    $without_sku = Product::factory()->create(['sku' => null]);
+    $with_same_prefix = Product::factory()->create(['sku' => 'P' . $without_sku->id]);
+
+    $results = withoutTransactionRetries(fn() => runConcurrently(12, fn(int $worker) => collect(range(1, 5))
+        ->map(fn() => app(CreateItemsAction::class)->handle(new CreateItemsDTO(
+            product_id: $worker % 2 === 0 ? $without_sku->id : $with_same_prefix->id,
+            quantity: '2.0000',
+            produced_at: business_today(),
+            storage_id: null,
+            consume_components: false,
+        ))->count())
+        ->sum()));
+
+    expect(collect($results)->where('ok', false)->all())->toBe([])
+        ->and(Item::count())->toBe(120)
+        ->and(Item::distinct()->count('code'))->toBe(120);
+});

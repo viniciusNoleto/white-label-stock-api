@@ -17,8 +17,6 @@ final class UpdateItemAction {
 
     private const NOT_FOUND = 'messages.items.not_found';
 
-    private const SCALE = 4;
-
     public function __construct(
         private readonly RecordStockMovementsAction $recordMovements,
     ) {
@@ -77,9 +75,9 @@ final class UpdateItemAction {
      * @return void
      */
     private function recordMovements(Item $item, string $previous_quantity, ?int $previous_storage_id): void {
-        $delta = bcsub((string)$item->quantity, $previous_quantity, self::SCALE);
+        $delta = bcsub((string)$item->quantity, $previous_quantity, DECIMAL_SCALE);
 
-        if (bccomp($delta, '0', self::SCALE) !== 0) {
+        if (bccomp($delta, '0', DECIMAL_SCALE) !== 0) {
             $this->recordMovements->handle(StockMovementTypeEnum::ADJUSTMENT, $item->product, [[
                 'item' => $item,
                 'quantity' => $delta,
@@ -101,6 +99,7 @@ final class UpdateItemAction {
      * @param Item $item
      * @param UpdateItemDTO $dto
      * @return array<string, mixed>
+     * @throws ApiException vencimento anterior à produção
      */
     private function attributes(Item $item, UpdateItemDTO $dto): array {
         $attributes = [];
@@ -122,6 +121,15 @@ final class UpdateItemAction {
             $attributes['expires_at'] = $dto->expires_at;
         }
 
+        // A regra vale para o resultado (o que veio no payload + o que já estava gravado): mandar só
+        // `expires_at` ou só `produced_at` também não pode deixar o item vencendo antes de ser produzido.
+        $produced_at = $attributes['produced_at'] ?? $item->produced_at->toDateString();
+        $expires_at = array_key_exists('expires_at', $attributes) ? $attributes['expires_at'] : $item->expires_at?->toDateString();
+
+        if ($expires_at !== null && $expires_at < $produced_at) {
+            throw new ApiException('messages.items.expires_before_produced');
+        }
+
         return $attributes;
     }
 
@@ -137,13 +145,13 @@ final class UpdateItemAction {
         }
 
         $quantity = match (true) {
-            $dto->quantity_add !== null => bcadd($item->quantity, $dto->quantity_add, self::SCALE),
-            $dto->quantity_subtract !== null => bcsub($item->quantity, $dto->quantity_subtract, self::SCALE),
+            $dto->quantity_add !== null => bcadd($item->quantity, $dto->quantity_add, DECIMAL_SCALE),
+            $dto->quantity_subtract !== null => bcsub($item->quantity, $dto->quantity_subtract, DECIMAL_SCALE),
             default => $dto->quantity,
         };
 
         // Só `quantity_subtract` deixa o saldo negativo (`quantity` absoluto já é validado >= 0).
-        if (bccomp($quantity, '0', self::SCALE) < 0) {
+        if (bccomp($quantity, '0', DECIMAL_SCALE) < 0) {
             throw new ApiException('messages.items.insufficient_stock', 422, [
                 'name' => $item->code,
                 'required' => format_decimal((string)$dto->quantity_subtract),
@@ -152,13 +160,13 @@ final class UpdateItemAction {
         }
 
         // Cada parcela passa no `decimal_rule()`, mas a soma pode estourar a coluna (SQLSTATE 22003 → 500).
-        if (bccomp($quantity, DECIMAL_MAX, self::SCALE) > 0) {
+        if (bccomp($quantity, DECIMAL_MAX, DECIMAL_SCALE) > 0) {
             throw new ApiException('messages.items.quantity_too_large');
         }
 
         $reserved = (string)(Item::reservedLinesQuery()->where('delivery_package_has_item.item_id', $item->id)->sum('delivery_package_has_item.quantity') ?: '0');
 
-        if (bccomp($quantity, $reserved, self::SCALE) < 0) {
+        if (bccomp($quantity, $reserved, DECIMAL_SCALE) < 0) {
             throw new ApiException('messages.items.below_reserved', 422, ['reserved' => format_decimal($reserved)]);
         }
 

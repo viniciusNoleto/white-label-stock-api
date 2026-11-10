@@ -56,6 +56,10 @@
             "@php artisan config:clear --ansi @no_additional_args",
             "@php vendor/bin/pest"
         ],
+        "test-coverage": [
+            "@php artisan config:clear --ansi @no_additional_args",
+            "@php vendor/bin/pest --coverage --min=95"
+        ],
         "lint": [
             "@php vendor/bin/pint --test"
         ],

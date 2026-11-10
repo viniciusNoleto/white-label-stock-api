@@ -42,7 +42,7 @@ final class DeleteItemAction {
 
             $this->recordMovements->handle(StockMovementTypeEnum::WRITE_OFF, $item->product, [[
                 'item' => $item,
-                'quantity' => bcmul($item->quantity, '-1', 4),
+                'quantity' => bcmul($item->quantity, '-1', DECIMAL_SCALE),
                 'balance' => '0',
                 'reason' => $reason,
             ]]);

@@ -75,7 +75,7 @@ recreate-testing-database: ## Recria o banco usado pelos testes
 	@$(COMPOSE) exec pgsql psql -U "${DB_USERNAME}" -d "${DB_DATABASE}" -c "CREATE DATABASE ${DB_DATABASE}_testing;"
 
 in: ## Lista todos os containers levantados para o usuário escolher um e entrar
-	@bash .docker/scripts/in.sh
+	@bash scripts/in.sh
 
 shell: ## Abre um shell no container do PHP
 	@$(COMPOSE) exec -it php-fpm bash
@@ -88,8 +88,14 @@ test: ## Roda os testes (Pest: Unit, Feature e Concurrency). Ex.: make test TEST
 	@$(PHP) php artisan config:clear --ansi
 	@$(PHP) ./vendor/bin/pest $(TEST)
 
+test-coverage: ## Testes com cobertura de linhas (mínimo 95%, como no CI). Precisa da imagem local com pcov: make build-cache
+	@$(PHP) composer test-coverage
+
 lint: ## Confere o estilo (Pint, regras em pint.json)
 	@$(PHP) ./vendor/bin/pint --test
+
+lint-scripts: ## Confere os scripts de operação (shellcheck, numa imagem fixa)
+	@docker run --rm -v "$(CURDIR)/scripts":/s -w /s koalaman/shellcheck:v0.10.0 -x -e SC1091 $$(cd scripts && ls *.sh)
 
 lint-fix: ## Corrige o estilo (Pint)
 	@$(PHP) ./vendor/bin/pint
@@ -137,76 +143,30 @@ install-production: ## Primeiro deploy num servidor (sem dependências de dev; n
 	@make cache
 	@echo "Instalação concluída."
 
-BACKUP_DIR := backups
-# Quantos dumps manter em backups/ (os mais antigos saem depois de cada backup) e para onde copiar
-# (destino do rsync: outro disco montado ou usuario@host:/caminho). Vêm do .env; estes são os padrões.
+# Operação (backup, restore, deploy): a lógica fica em scripts/*.sh; aqui só a interface.
+# Os scripts recebem a configuração do .env por estas variáveis de ambiente.
+# BACKUP_KEEP: quantos dumps manter. BACKUP_OFFSITE: destino do rsync (outro disco ou usuario@host:/caminho/).
+# DEPLOY_BRANCH: branch que o deploy acompanha. DEPLOY_REMOTE: remoto que recebe as tags deploy-*.
 BACKUP_KEEP ?= 14
 BACKUP_OFFSITE ?=
-
-backup: ## Dump do banco em backups/AAAAMMDD-HHMMSS.dump, retenção BACKUP_KEEP e cópia para BACKUP_OFFSITE
-	@mkdir -p $(BACKUP_DIR)
-	@$(COMPOSE) exec -T pgsql pg_dump -U "${DB_USERNAME}" -d "${DB_DATABASE}" -Fc > $(BACKUP_DIR)/$$(date +%Y%m%d-%H%M%S).dump
-	@ls -1t $(BACKUP_DIR)/*.dump | head -1 | xargs -I{} echo "Backup: {}"
-	@ls -1t $(BACKUP_DIR)/*.dump | tail -n +$$(( $(BACKUP_KEEP) + 1 )) | xargs -r rm -f --
-ifneq ($(strip $(BACKUP_OFFSITE)),)
-	@rsync -a --delete $(BACKUP_DIR)/ "$(BACKUP_OFFSITE)" && echo "Copiado para $(BACKUP_OFFSITE)"
-else
-	@echo "Aviso: BACKUP_OFFSITE vazio, o backup existe só neste disco."
-endif
+DEPLOY_BRANCH ?= main
+DEPLOY_REMOTE ?= origin
+export DOCKER_COMPOSE_FILE DB_USERNAME DB_DATABASE BACKUP_KEEP BACKUP_OFFSITE DEPLOY_BRANCH DEPLOY_REMOTE
 
 file ?=
-backup-verify: ## Restaura um dump (o mais recente ou file=…) num banco descartável e conta as linhas: prova que o backup volta
-	@f="$(file)"; [ -n "$$f" ] || f=$$(ls -1t $(BACKUP_DIR)/*.dump 2>/dev/null | head -1); \
-	[ -f "$$f" ] || { echo "Nenhum backup encontrado."; exit 1; }; \
-	check="${DB_DATABASE}_restore_check"; \
-	$(COMPOSE) exec -T pgsql psql -U "${DB_USERNAME}" -d "${DB_DATABASE}" -q -c "DROP DATABASE IF EXISTS $$check;" -c "CREATE DATABASE $$check;" \
-	&& $(COMPOSE) exec -T pgsql pg_restore -U "${DB_USERNAME}" -d "$$check" --no-owner --exit-on-error < "$$f" \
-	&& $(COMPOSE) exec -T pgsql psql -U "${DB_USERNAME}" -d "$$check" -tA \
-		-c "SELECT 'migrations: ' || count(*) FROM migrations" \
-		-c "SELECT 'products: ' || count(*) FROM products" \
-		-c "SELECT 'items: ' || count(*) FROM items" \
-		-c "SELECT 'stock_movements: ' || count(*) FROM stock_movements"; \
-	status=$$?; \
-	$(COMPOSE) exec -T pgsql psql -U "${DB_USERNAME}" -d "${DB_DATABASE}" -q -c "DROP DATABASE IF EXISTS $$check;"; \
-	if [ $$status -eq 0 ]; then echo "Backup OK: $$f"; else echo "Backup NÃO restaurou: $$f"; exit 1; fi
-
-restore: ## Restaura um backup (apaga o banco atual!). Ex.: make restore file=backups/20261110-120000.dump
-ifndef file
-	@echo "Informe o arquivo: make restore file=backups/AAAAMMDD-HHMMSS.dump" && exit 1
-else
-	@read -p "Restaurar $(file) por cima de ${DB_DATABASE}? Digite o nome do banco para confirmar: " answer && [ "$$answer" = "${DB_DATABASE}" ]
-	@$(PHP) php artisan down --retry=30
-	@$(COMPOSE) exec -T pgsql pg_restore -U "${DB_USERNAME}" -d "${DB_DATABASE}" --clean --if-exists --no-owner < $(file)
-	@$(PHP) php artisan up
-	@echo "Restaurado: $(file)"
-endif
-
-# Branch que o deploy acompanha; REF=<tag|commit> faz o deploy de uma versão específica (rollback).
-DEPLOY_BRANCH ?= main
 REF ?=
 
-deploy: ## Atualiza um servidor já instalado: manutenção → backup → código → build → dependências → migrations → caches → reload do PHP → no ar → tag. Ex.: make deploy | make deploy REF=deploy-20261110-120000
-	@echo "${APP_NAME} DEPLOY!"
-	@make define-environment
-	@test -z "$$(git status --porcelain --untracked-files=no)" || { echo "Há mudanças locais não commitadas: o deploy só roda código versionado."; exit 1; }
-	@# 1. Manutenção primeiro (o código antigo responde 503): o backup sai sem escrita concorrente.
-	@$(PHP) php artisan down --retry=30
-	@make backup || { echo "Backup falhou: a API segue em manutenção (make up-app para voltar sem deploy)."; exit 1; }
-	@# 2. Código: a branch atualizada ou a REF pedida.
-	@git fetch --tags --quiet
-	@if [ -n "$(REF)" ]; then git checkout --quiet --detach "$(REF)"; else git checkout --quiet $(DEPLOY_BRANCH) && git pull --ff-only --quiet; fi
-	@echo "Código: $$(git describe --tags --always)"
-	@$(COMPOSE) up -d --build --remove-orphans
-	@make composer-install-production
-	@make clear
-	@make migrate || { echo "Migration falhou: a API segue em manutenção. Rollback: make deploy REF=<tag deploy-… anterior> (README › Rollback)."; exit 1; }
-	@make cache
-	@# 3. Produção roda com opcache.validate_timestamps=0: sem reiniciar, o php-fpm seguiria servindo o bytecode antigo.
-	@$(COMPOSE) restart php-fpm scheduler
-	@$(PHP) php artisan up
-	@# 4. Toda versão que entrou no ar ganha uma tag: é o alvo do rollback.
-	@git tag -a "deploy-$$(date +%Y%m%d-%H%M%S)" -m "Deploy $$(git rev-parse --short HEAD)"
-	@echo "DEPLOY FINALIZADO! Versões já publicadas: git tag -l 'deploy-*'"
+backup: ## Dump do banco em backups/AAAAMMDD-HHMMSS.dump, retenção BACKUP_KEEP e cópia para BACKUP_OFFSITE
+	@bash scripts/backup.sh
+
+backup-verify: ## Restaura um dump (o mais recente ou file=…) num banco descartável e conta as linhas: prova que o backup volta
+	@bash scripts/backup-verify.sh $(file)
+
+restore: ## Restaura um backup (pede confirmação e faz um dump do estado atual antes). Ex.: make restore file=backups/20261110-120000.dump
+	@bash scripts/restore.sh $(file)
+
+deploy: ## Atualiza um servidor já instalado (manutenção → backup → código → migrations → restart → tag). Ex.: make deploy | make deploy REF=deploy-20261110-120000
+	@bash scripts/deploy.sh $(REF)
 
 up-app: ## Tira a API do modo manutenção (sem deploy)
 	@$(PHP) php artisan up

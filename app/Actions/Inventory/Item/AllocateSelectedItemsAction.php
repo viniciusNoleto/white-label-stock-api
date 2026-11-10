@@ -8,8 +8,6 @@ use App\Models\Inventory\Product;
 
 final class AllocateSelectedItemsAction {
 
-    private const SCALE = 4;
-
     /**
      * Alternativa ao FEFO de `AllocateProductStockAction` para produtos atômicos: usa exatamente os
      * itens escolhidos (um por unidade). Cada item precisa ser do produto, estar dentro da validade e
@@ -27,7 +25,7 @@ final class AllocateSelectedItemsAction {
             throw new ApiException('messages.delivery_packages.selection_atomic_only', 422, ['name' => $product->name]);
         }
 
-        if (bccomp($quantity, (string)count($item_ids), self::SCALE) !== 0) {
+        if (bccomp($quantity, (string)count($item_ids), DECIMAL_SCALE) !== 0) {
             throw new ApiException('messages.delivery_packages.selection_count', 422, [
                 'name' => $product->name,
                 'quantity' => format_decimal($quantity),

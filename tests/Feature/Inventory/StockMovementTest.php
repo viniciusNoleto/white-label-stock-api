@@ -291,3 +291,85 @@ describe('GET /api/stock-movements', function () {
         listMovements()->assertStatus(500)->assertJsonPath('message.pt-br', 'Erro ao buscar as movimentações.');
     });
 });
+
+describe('GET /api/stock-movements/summary', function () {
+    it('sums the movements per product, type and reason, with the exact shape', function () {
+        $kg = Unit::factory()->create(['abbreviation' => 'kg']);
+        $flour = Product::factory()->bulk()->create(['name' => 'Farinha', 'sku' => 'FAR', 'unit_id' => $kg->id]);
+        $cake = Product::factory()->create(['name' => 'Bolo', 'sku' => 'BOLO']);
+
+        $this->postJson('/api/items', ['product_id' => $flour->id, 'quantity' => 10])->assertCreated();
+        $this->postJson('/api/items', ['product_id' => $flour->id, 'quantity' => 2.5])->assertCreated();
+        $this->postJson('/api/items', ['product_id' => $cake->id, 'quantity' => 3])->assertCreated();
+        $this->deleteJson('/api/items/' . Item::where('code', 'FAR-0001')->value('id'), ['reason' => 'expired'])->assertOk();
+        $this->deleteJson('/api/items/' . Item::where('code', 'BOLO-0001')->value('id'), ['reason' => 'expired'])->assertOk();
+        $this->deleteJson('/api/items/' . Item::where('code', 'BOLO-0002')->value('id'))->assertOk();
+
+        $response = $this->getJson('/api/stock-movements/summary')->assertOk();
+
+        expect($response->json('data.items'))->toBe([
+            ['product_id' => $cake->id, 'product_name' => 'Bolo', 'unit_abbreviation' => $cake->unit->abbreviation, 'type' => 'entry', 'reason' => null, 'quantity' => '3.0000', 'movements_count' => 3],
+            // Baixa sem motivo fica visível como `reason: null`: o quanto da perda ainda não foi classificado.
+            ['product_id' => $cake->id, 'product_name' => 'Bolo', 'unit_abbreviation' => $cake->unit->abbreviation, 'type' => 'write_off', 'reason' => 'expired', 'quantity' => '-1.0000', 'movements_count' => 1],
+            ['product_id' => $cake->id, 'product_name' => 'Bolo', 'unit_abbreviation' => $cake->unit->abbreviation, 'type' => 'write_off', 'reason' => null, 'quantity' => '-1.0000', 'movements_count' => 1],
+            ['product_id' => $flour->id, 'product_name' => 'Farinha', 'unit_abbreviation' => 'kg', 'type' => 'entry', 'reason' => null, 'quantity' => '12.5000', 'movements_count' => 2],
+            ['product_id' => $flour->id, 'product_name' => 'Farinha', 'unit_abbreviation' => 'kg', 'type' => 'write_off', 'reason' => 'expired', 'quantity' => '-10.0000', 'movements_count' => 1],
+        ]);
+    });
+
+    it('answers how many kg were lost to expiration in a month with one row per product', function () {
+        $kg = Unit::factory()->create(['abbreviation' => 'kg']);
+        $flour = Product::factory()->bulk()->create(['name' => 'Farinha', 'sku' => 'FAR', 'unit_id' => $kg->id]);
+
+        travelTo('2026-10-31 12:00:00');
+        $this->postJson('/api/items', ['product_id' => $flour->id, 'quantity' => 4])->assertCreated();
+        $this->deleteJson('/api/items/' . Item::where('code', 'FAR-0001')->value('id'), ['reason' => 'expired'])->assertOk();
+
+        travelTo('2026-11-10 12:00:00');
+        foreach ([1.25, 2] as $quantity) {
+            $this->postJson('/api/items', ['product_id' => $flour->id, 'quantity' => $quantity])->assertCreated();
+        }
+        foreach (Item::where('quantity', '>', 0)->pluck('id') as $id) {
+            $this->deleteJson("/api/items/{$id}", ['reason' => 'expired'])->assertOk();
+        }
+
+        $this->getJson('/api/stock-movements/summary?type=write_off&reason=expired&date_from=2026-11-01&date_to=2026-11-30')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.items')
+            ->assertJsonPath('data.items.0.quantity', '-3.2500')
+            ->assertJsonPath('data.items.0.unit_abbreviation', 'kg')
+            ->assertJsonPath('data.items.0.movements_count', 2);
+    });
+
+    it('keeps the copied name of a deleted product', function () {
+        $product = Product::factory()->bulk()->create(['name' => 'Fermento', 'sku' => 'FER']);
+        $this->postJson('/api/items', ['product_id' => $product->id, 'quantity' => 1])->assertCreated();
+        $this->patchJson('/api/items/' . Item::first()->id, ['quantity' => 0])->assertOk();
+        $this->deleteJson("/api/products/{$product->id}")->assertOk();
+
+        $this->getJson('/api/stock-movements/summary?type=entry')
+            ->assertOk()
+            ->assertJsonPath('data.items.0.product_id', null)
+            ->assertJsonPath('data.items.0.product_name', 'Fermento');
+    });
+
+    it('returns an empty list when nothing matches', function () {
+        $this->getJson('/api/stock-movements/summary?date_from=2030-01-01')
+            ->assertOk()
+            ->assertJsonPath('data.items', []);
+    });
+
+    it('requires a session', function () {
+        $this->withToken('invalid');
+
+        $this->getJson('/api/stock-movements/summary')->assertUnauthorized();
+    });
+
+    it('returns 500 when the database fails', function () {
+        failTable('stock_movements');
+
+        $this->getJson('/api/stock-movements/summary')
+            ->assertStatus(500)
+            ->assertJsonPath('message.pt-br', 'Erro ao resumir as movimentações.');
+    });
+});

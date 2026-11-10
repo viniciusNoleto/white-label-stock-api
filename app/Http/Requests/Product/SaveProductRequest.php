@@ -21,6 +21,8 @@ class SaveProductRequest extends BaseRequest {
             'is_atomic' => 'sometimes|boolean',
             'shelf_life_days' => 'nullable|integer|min:1|max:' . self::MAX_SHELF_LIFE_DAYS,
             'category_ids' => 'nullable|array',
+            // Cada id é validado (antes, `["abc", 0]` virava "sem categorias" com 200, em silêncio).
+            'category_ids.*' => 'required|integer|min:1',
             'components' => 'nullable|array',
             'components.*.id' => 'required|integer|min:1|distinct',
             'components.*.quantity_required' => 'required|' . decimal_rule() . '|gt:0',
@@ -37,6 +39,7 @@ class SaveProductRequest extends BaseRequest {
             'sku.*' => 'messages.products.invalid_sku',
             'shelf_life_days.*' => 'messages.products.invalid_shelf_life',
             'category_ids.*' => 'messages.products.invalid_categories',
+            'category_ids.*.*' => 'messages.products.invalid_categories',
             'components.array' => 'messages.products.invalid_components',
             'components.*.id.distinct' => 'messages.products.duplicate_components',
             'components.*.id.*' => 'messages.products.invalid_components',

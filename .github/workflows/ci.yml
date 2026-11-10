@@ -14,6 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Estilo, análise estática e auditoria não dependem do patch do PHP: rodam no setup-php, que é rápido.
+  # O PHP que importa (o de produção) é o da imagem, no job `tests`.
   quality:
     name: Lint, static analysis and audit
     runs-on: ubuntu-latest
@@ -43,12 +45,16 @@ jobs:
       - name: Composer audit (known vulnerabilities)
         run: composer audit-deps
 
+      # Scripts de operação (backup, restore, deploy). O shellcheck já vem no runner ubuntu.
+      - name: ShellCheck (ops scripts)
+        run: shellcheck -x -e SC1091 scripts/*.sh
+
   tests:
-    name: Tests (Pest + Postgres 16)
+    name: Tests in the production PHP image (Pest + Postgres 16 + coverage)
     runs-on: ubuntu-latest
-    # A suíte leva ~15 s; os testes de concorrência matam filhos presos em 30 s (`runConcurrently`).
-    # Isto é o teto do job inteiro, para um travamento nunca segurar o runner por 6 h.
-    timeout-minutes: 15
+    # A suíte leva ~15 s; o build da imagem, 1-3 min. Os testes de concorrência matam filhos presos em
+    # 30 s (`runConcurrently`). Isto é o teto do job inteiro, para um travamento nunca segurar o runner por 6 h.
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -72,28 +78,43 @@ jobs:
       DB_DATABASE: white_label_stock
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
+      # Roda um comando dentro da imagem construída abaixo, com o código montado como em produção
+      # (`docker-compose.production.yml`) e a rede do runner (o Postgres do `services` em 127.0.0.1).
+      IN_PHP_IMAGE: >-
+        docker run --rm --network host
+        -v ${{ github.workspace }}:/var/www/html
+        -v ${{ github.workspace }}/.docker/php/php.ini:/usr/local/etc/php/php.ini
+        -e PHP_OPCACHE_VALIDATE_TIMESTAMPS=1
+        -e DB_CONNECTION -e DB_HOST -e DB_PORT -e DB_DATABASE -e DB_USERNAME -e DB_PASSWORD
+        white-label-stock-php:ci
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
-        with:
-          php-version: '8.5'
-          extensions: bcmath, intl, pdo_pgsql, pcntl, posix
-          coverage: none
+      # O mesmo Dockerfile da produção (mais o pcov, só aqui): um PR do Dependabot que sobe a imagem do
+      # PHP roda a suíte inteira na versão nova antes de chegar ao `make deploy`. Antes, o CI testava num
+      # PHP instalado pelo setup-php, e a imagem de produção só era construída no servidor.
+      - name: Build the PHP image (production Dockerfile + pcov)
+        run: docker build --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" --build-arg INSTALL_PCOV=1 -t white-label-stock-php:ci .docker/php
+
+      - name: Build the nginx image
+        run: docker build -t white-label-stock-nginx:ci .docker/nginx
 
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: vendor
-          key: composer-${{ hashFiles('composer.lock') }}
+          # O Dockerfile entra na chave: o vendor é instalado pelo PHP da imagem.
+          key: composer-image-${{ hashFiles('composer.lock', '.docker/php/Dockerfile') }}
 
-      - run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Composer install (inside the image)
+        run: $IN_PHP_IMAGE composer install --no-interaction --no-progress --prefer-dist
 
       - name: Prepare .env
         run: |
           cp .env.example .env
-          php artisan key:generate --ansi
+          $IN_PHP_IMAGE php artisan key:generate --ansi
 
       # Unit + Feature (transação por teste) e Concurrency (processos paralelos com pcntl_fork).
-      - name: Pest
-        run: composer test
+      # Falha se a cobertura de linhas de `app/` cair abaixo de 95% (hoje ~97%).
+      - name: Pest with coverage
+        run: $IN_PHP_IMAGE composer test-coverage

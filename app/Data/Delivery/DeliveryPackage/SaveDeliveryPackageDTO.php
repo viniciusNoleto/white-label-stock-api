@@ -10,7 +10,7 @@ class SaveDeliveryPackageDTO extends Data {
     /**
      * @param string|null $recipient para quem vai o pacote (cliente, pedido, mesa…); em branco → `null`
      * @param string|null $notes anotações em branco são gravadas como `null`
-     * @param array<int, array{product_id: int, quantity: string, item_ids: int[]|null}> $items produtos sem repetição; quantidade com 4 casas (escala da coluna) para as contas com bcmath; `item_ids` = itens escolhidos um a um (`null` = FEFO)
+     * @param array<int, array{product_id: int, quantity: string, item_ids: int[]|null}> $items produtos sem repetição; quantidade com 4 casas (escala da coluna) para as contas com bcmath; `item_ids` = itens escolhidos um a um (`null` = FEFO); sem `quantity` no payload, vale `count(item_ids)`
      */
     public function __construct(
         public ?string $recipient,
@@ -31,11 +31,16 @@ class SaveDeliveryPackageDTO extends Data {
             recipient: is_string($recipient) && trim($recipient) !== '' ? trim($recipient) : null,
             notes: is_string($notes) && trim($notes) !== '' ? trim($notes) : null,
             items: collect($request->validated('items'))
-                ->map(fn($item) => [
-                    'product_id' => (int)$item['product_id'],
-                    'quantity' => to_decimal($item['quantity']),
-                    'item_ids' => isset($item['item_ids']) ? array_map('intval', $item['item_ids']) : null,
-                ])
+                ->map(function ($item) {
+                    $item_ids = isset($item['item_ids']) ? array_map('intval', $item['item_ids']) : null;
+
+                    return [
+                        'product_id' => (int)$item['product_id'],
+                        // Sem `quantity`, a escolha manual define quantos (a Action confere quando vêm os dois).
+                        'quantity' => to_decimal($item['quantity'] ?? count($item_ids ?? [])),
+                        'item_ids' => $item_ids,
+                    ];
+                })
                 ->values()
                 ->all(),
         );

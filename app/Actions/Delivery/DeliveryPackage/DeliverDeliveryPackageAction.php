@@ -16,8 +16,6 @@ use Throwable;
 
 final class DeliverDeliveryPackageAction {
 
-    private const SCALE = 4;
-
     private const NOT_FOUND = 'messages.delivery_packages.not_found';
 
     public function __construct(
@@ -69,7 +67,7 @@ final class DeliverDeliveryPackageAction {
                     throw new ApiException('messages.delivery_packages.expired_items', 422, ['code' => $item->code]);
                 }
 
-                if (!$item || bccomp($item->quantity, $line->quantity, self::SCALE) < 0) {
+                if (!$item || bccomp($item->quantity, $line->quantity, DECIMAL_SCALE) < 0) {
                     throw new ApiException('messages.items.insufficient_stock', 422, [
                         'name' => $line->product->name,
                         'required' => format_decimal($line->quantity),
@@ -80,8 +78,8 @@ final class DeliverDeliveryPackageAction {
                 // Registra antes de consumir: o atômico é excluído no consumo.
                 $this->recordMovements->handle(StockMovementTypeEnum::DELIVERY, $line->product, [[
                     'item' => $item,
-                    'quantity' => bcmul($line->quantity, '-1', self::SCALE),
-                    'balance' => bcsub($item->quantity, $line->quantity, self::SCALE),
+                    'quantity' => bcmul($line->quantity, '-1', DECIMAL_SCALE),
+                    'balance' => bcsub($item->quantity, $line->quantity, DECIMAL_SCALE),
                 ]], $package->id);
 
                 $this->consume->handle($item, $line->product, $line->quantity);

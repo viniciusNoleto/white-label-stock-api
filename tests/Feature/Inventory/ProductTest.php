@@ -176,6 +176,21 @@ describe('POST /api/products', function () {
         'repeated' => [[['id' => 1, 'quantity_required' => 1], ['id' => 1, 'quantity_required' => 2]], 'Each product can only appear once in the recipe.'],
     ]);
 
+    it('rejects invalid category ids instead of silently dropping them', function (mixed $category_ids) {
+        $this->postJson('/api/products', productPayload(['category_ids' => $category_ids]))
+            ->assertUnprocessable()
+            ->assertJsonPath('message.en-us', 'Invalid categories.');
+
+        expect(Product::count())->toBe(0);
+    })->with([
+        'not a list' => ['x'],
+        'text' => [['abc']],
+        'zero' => [[0]],
+        'negative' => [[-1]],
+        'null element' => [[null]],
+        'fraction' => [[1.5]],
+    ]);
+
     it('only accepts whole quantities of atomic components', function () {
         $board = Product::factory()->create(['name' => 'Chapa MDF']);
 

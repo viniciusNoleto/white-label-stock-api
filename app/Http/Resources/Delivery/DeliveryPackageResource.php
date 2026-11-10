@@ -40,7 +40,7 @@ class DeliveryPackageResource extends JsonResource {
                         'product_id' => $product->id,
                         'name' => $product->name,
                         'is_atomic' => $product->is_atomic,
-                        'quantity' => $lines->reduce(fn(string $sum, $line) => bcadd($sum, $line->quantity, 4), '0.0000'),
+                        'quantity' => $lines->reduce(fn(string $sum, $line) => bcadd($sum, $line->quantity, DECIMAL_SCALE), '0.0000'),
                         'stock_quantity' => $product->stock_quantity,
                         'unit' => [
                             'id' => $product->unit->id,

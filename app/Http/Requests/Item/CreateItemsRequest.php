@@ -8,6 +8,7 @@ class CreateItemsRequest extends BaseRequest {
 
     /**
      * Sem `code`: o código do item é sempre gerado pela API (`{SKU}-0001`…).
+     * `produced_at` nunca no futuro (dia do negócio): produção agendada não é estoque.
      *
      * @return array<string, mixed>
      */
@@ -15,7 +16,7 @@ class CreateItemsRequest extends BaseRequest {
         return [
             'product_id' => 'required|integer|min:1',
             'quantity' => 'nullable|' . decimal_rule() . '|gt:0',
-            'produced_at' => 'nullable|date_format:Y-m-d',
+            'produced_at' => 'nullable|date_format:Y-m-d|before_or_equal:' . business_today(),
             'storage_id' => 'nullable|integer|min:1',
             'consume_components' => 'nullable|boolean',
         ];
@@ -28,6 +29,7 @@ class CreateItemsRequest extends BaseRequest {
         return [
             'product_id.*' => 'messages.items.product_required',
             'quantity.*' => 'messages.items.invalid_quantity',
+            'produced_at.before_or_equal' => 'messages.items.produced_in_future',
             'produced_at.*' => 'messages.items.invalid_date',
             'storage_id.*' => 'messages.items.invalid_storage',
             'consume_components.*' => 'messages.invalid_payload',

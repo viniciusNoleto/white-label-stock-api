@@ -2,7 +2,7 @@
 # Lista os containers em execução e abre um shell no escolhido.
 PS3="Escolha uma opção: "
 
-options=($(docker container ls --format "{{.Names}}"))
+mapfile -t options < <(docker container ls --format "{{.Names}}")
 select opt in "${options[@]}" "exit"; do
     if [[ $opt == "exit" || $REPLY == "exit" ]]; then
         break

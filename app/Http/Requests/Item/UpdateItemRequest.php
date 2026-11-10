@@ -19,7 +19,8 @@ class UpdateItemRequest extends BaseRequest {
             'quantity' => 'nullable|' . decimal_rule() . '|min:0',
             'quantity_add' => 'nullable|' . decimal_rule() . '|gt:0',
             'quantity_subtract' => 'nullable|' . decimal_rule() . '|gt:0',
-            'produced_at' => 'sometimes|required|date_format:Y-m-d',
+            // Nunca no futuro (dia do negócio). `expires_at >= produced_at` depende do item gravado: fica na Action.
+            'produced_at' => 'sometimes|required|date_format:Y-m-d|before_or_equal:' . business_today(),
             'expires_at' => 'nullable|date_format:Y-m-d',
             // `null` desvincula; qualquer outra coisa precisa ser um id (antes, lixo virava `null` em silêncio)
             'storage_id' => 'nullable|integer|min:1',
@@ -34,6 +35,7 @@ class UpdateItemRequest extends BaseRequest {
             'quantity.*' => 'messages.items.invalid_quantity',
             'quantity_add.*' => 'messages.items.invalid_quantity',
             'quantity_subtract.*' => 'messages.items.invalid_quantity',
+            'produced_at.before_or_equal' => 'messages.items.produced_in_future',
             'produced_at.*' => 'messages.items.invalid_date',
             'expires_at.*' => 'messages.items.invalid_date',
             'storage_id.*' => 'messages.items.invalid_storage',

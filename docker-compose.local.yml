@@ -32,6 +32,9 @@ services:
     build:
       context: .docker/php
       dockerfile: Dockerfile
+      # Só no ambiente local (e no CI): pcov para `make test-coverage`. A produção não leva.
+      args:
+        INSTALL_PCOV: "1"
     restart: unless-stopped
     tty: true
     environment:
