@@ -120,6 +120,10 @@ return [
         'fetch_error' => 'Erro ao buscar o estoque.',
     ],
 
+    'dashboard' => [
+        'fetch_error' => 'Erro ao montar o painel.',
+    ],
+
     'stock_movements' => [
         'fetch_error' => 'Erro ao buscar as movimentações.',
         'summary_error' => 'Erro ao resumir as movimentações.',

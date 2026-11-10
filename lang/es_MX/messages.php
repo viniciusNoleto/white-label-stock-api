@@ -120,6 +120,10 @@ return [
         'fetch_error' => 'Error al obtener el inventario.',
     ],
 
+    'dashboard' => [
+        'fetch_error' => 'Error al generar el panel.',
+    ],
+
     'stock_movements' => [
         'fetch_error' => 'Error al obtener los movimientos.',
         'summary_error' => 'Error al resumir los movimientos.',

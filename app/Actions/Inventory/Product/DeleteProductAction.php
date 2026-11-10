@@ -2,6 +2,7 @@
 
 namespace App\Actions\Inventory\Product;
 
+use App\Base\Cache\DashboardCache;
 use App\Exceptions\ApiException;
 use App\Models\Inventory\Item;
 use App\Models\Inventory\Product;
@@ -31,6 +32,8 @@ final class DeleteProductAction {
 
         try {
             DB::transaction(function () use ($product) {
+                DashboardCache::invalidate();
+
                 Item::query()->where('product_id', $product->id)->where('quantity', 0)->delete();
 
                 $product->delete();

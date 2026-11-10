@@ -2,6 +2,7 @@
 
 namespace App\Actions\Delivery\DeliveryPackage;
 
+use App\Base\Cache\DashboardCache;
 use App\Data\Delivery\DeliveryPackage\SaveDeliveryPackageDTO;
 use App\Enum\Delivery\DeliveryPackageStatusEnum;
 use App\Models\Delivery\DeliveryPackage;
@@ -28,6 +29,8 @@ final class CreateDeliveryPackageAction {
      */
     public function handle(SaveDeliveryPackageDTO $dto, ?User $author): DeliveryPackage {
         return DB::transaction(function () use ($dto, $author) {
+            DashboardCache::invalidate();
+
             $package = DeliveryPackage::create([
                 'status' => DeliveryPackageStatusEnum::PENDING,
                 'recipient' => $dto->recipient,

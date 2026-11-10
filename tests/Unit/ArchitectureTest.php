@@ -62,6 +62,32 @@ it('makes every action that writes items call the movement recorder', function (
     expect($offenders)->toBe([]);
 });
 
+/*
+ * O painel (`DashboardCache`) só é recalculado quando a versão muda. Checagem **estática e heurística**:
+ * toda Action de pacote ou produto que abre transação precisa chamar `DashboardCache::invalidate()` ou
+ * registrar movimentação (o `RecordStockMovementsAction` invalida). A garantia de comportamento está em
+ * `DashboardTest` (cache).
+ */
+it('makes every package and product write invalidate the dashboard cache', function () {
+    $offenders = [];
+
+    foreach (['Delivery/DeliveryPackage', 'Inventory/Product'] as $dir) {
+        foreach (Finder::create()->files()->in(app_path("Actions/{$dir}"))->name('*.php') as $file) {
+            $source = $file->getContents();
+
+            if (!str_contains($source, 'DB::transaction(')) {
+                continue;
+            }
+
+            if (!str_contains($source, 'DashboardCache::invalidate()') && !str_contains($source, '$this->recordMovements->handle(')) {
+                $offenders[] = "{$dir}/{$file->getFilename()}";
+            }
+        }
+    }
+
+    expect($offenders)->toBe([]);
+});
+
 it('never writes items through the raw query builder, which would bypass the actions', function () {
     $offenders = [];
 

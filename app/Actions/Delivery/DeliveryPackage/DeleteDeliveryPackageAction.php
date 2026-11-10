@@ -2,6 +2,7 @@
 
 namespace App\Actions\Delivery\DeliveryPackage;
 
+use App\Base\Cache\DashboardCache;
 use App\Exceptions\ApiException;
 use App\Models\Delivery\DeliveryPackage;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -27,6 +28,8 @@ final class DeleteDeliveryPackageAction {
         $package_id = parse_id($id) ?? throw new ModelNotFoundException(self::NOT_FOUND);
 
         DB::transaction(function () use ($package_id) {
+            DashboardCache::invalidate();
+
             $package = DeliveryPackage::query()->lockForUpdate()->find($package_id)
                 ?? throw new ModelNotFoundException(self::NOT_FOUND);
 

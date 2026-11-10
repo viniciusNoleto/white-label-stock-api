@@ -2,6 +2,7 @@
 
 namespace App\Actions\Inventory\Product;
 
+use App\Base\Cache\DashboardCache;
 use App\Data\Inventory\Product\SaveProductDTO;
 use App\Exceptions\ApiException;
 use App\Models\Inventory\Product;
@@ -34,6 +35,8 @@ final class UpdateProductAction {
 
         try {
             return DB::transaction(function () use ($product_id, $dto) {
+                DashboardCache::invalidate();
+
                 $product = Product::query()->lockedForWrite()->find($product_id)
                     ?? throw new ModelNotFoundException(self::NOT_FOUND);
 

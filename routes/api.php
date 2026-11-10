@@ -2,6 +2,7 @@
 
 use App\Base\Traits\Response;
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Delivery\DeliveryPackageController;
 use App\Http\Controllers\Inventory\ItemCategoryController;
 use App\Http\Controllers\Inventory\ItemController;
@@ -27,6 +28,9 @@ Route::prefix('auth')->group(function () {
 });
 
 Route::middleware('auth')->group(function () {
+    // Sem throttle: o painel é servido do cache versionado (`DashboardCache`).
+    Route::get('dashboard', [DashboardController::class, 'show'])->name('dashboard.show');
+
     Route::prefix('units')->group(function () {
         Route::get('', [UnitController::class, 'index'])->name('units.index');
         Route::post('', [UnitController::class, 'store'])->name('units.store');

@@ -120,6 +120,10 @@ return [
         'fetch_error' => 'Error fetching stock.',
     ],
 
+    'dashboard' => [
+        'fetch_error' => 'Error building the dashboard.',
+    ],
+
     'stock_movements' => [
         'fetch_error' => 'Error fetching stock movements.',
         'summary_error' => 'Error summarizing the stock movements.',

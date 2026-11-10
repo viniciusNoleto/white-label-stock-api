@@ -2,6 +2,7 @@
 
 namespace App\Actions\Delivery\DeliveryPackage;
 
+use App\Base\Cache\DashboardCache;
 use App\Data\Delivery\DeliveryPackage\SaveDeliveryPackageDTO;
 use App\Exceptions\ApiException;
 use App\Models\Delivery\DeliveryPackage;
@@ -32,6 +33,8 @@ final class UpdateDeliveryPackageAction {
         $package_id = parse_id($id) ?? throw new ModelNotFoundException(self::NOT_FOUND);
 
         return DB::transaction(function () use ($package_id, $dto) {
+            DashboardCache::invalidate();
+
             $package = DeliveryPackage::query()->lockForUpdate()->find($package_id)
                 ?? throw new ModelNotFoundException(self::NOT_FOUND);
 

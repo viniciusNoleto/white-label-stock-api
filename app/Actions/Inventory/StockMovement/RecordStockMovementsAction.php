@@ -2,6 +2,7 @@
 
 namespace App\Actions\Inventory\StockMovement;
 
+use App\Base\Cache\DashboardCache;
 use App\Enum\Inventory\StockMovementTypeEnum;
 use App\Enum\Inventory\WriteOffReasonEnum;
 use App\Models\Inventory\Item;
@@ -17,6 +18,7 @@ final class RecordStockMovementsAction {
      * requisição (`Auth::user()`, posto pelo middleware `auth`) como autor.
      * Deve rodar na mesma transação da alteração do estoque e **antes** de excluir o item
      * (a FK `item_id` precisa existir na inserção; depois vira `null` e o código fica).
+     * Toda mudança de estoque passa por aqui, então é aqui que o painel fica velho (`DashboardCache`, depois do commit).
      *
      * @param StockMovementTypeEnum $type
      * @param Product $product
@@ -61,5 +63,7 @@ final class RecordStockMovementsAction {
             'user_name' => $user?->name,
             'created_at' => $now,
         ], $entries));
+
+        DashboardCache::invalidate();
     }
 }

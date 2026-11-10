@@ -2,6 +2,7 @@
 
 namespace App\Actions\Inventory\Product;
 
+use App\Base\Cache\DashboardCache;
 use App\Data\Inventory\Product\SaveProductDTO;
 use App\Exceptions\ApiException;
 use App\Models\Inventory\Product;
@@ -26,6 +27,8 @@ final class CreateProductAction {
     public function handle(SaveProductDTO $dto): Product {
         try {
             return DB::transaction(function () use ($dto) {
+                DashboardCache::invalidate();
+
                 $product = Product::create([
                     'name' => $dto->name,
                     'sku' => $dto->sku,
