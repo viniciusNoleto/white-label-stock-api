@@ -1,5 +1,5 @@
 # Versões fixas (atualizadas pelo Dependabot): o mesmo Dockerfile gera a mesma imagem amanhã.
-FROM php:8.5.12-fpm
+FROM php:8.6.0RC7-fpm
 
 WORKDIR /var/www/html
 
